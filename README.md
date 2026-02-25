@@ -1,36 +1,127 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Creative Automation Pipeline (Adobe FDE POC)
 
-## Getting Started
+Local web app that demonstrates campaign creative automation for social ads:
+- Ingests a **JSON campaign brief**
+- Reuses uploaded product assets when available
+- Generates missing assets with OpenAI
+- Produces output variants for `1:1`, `9:16`, and `16:9`
+- Overlays campaign copy
+- Runs basic brand compliance checks (logo + color proximity)
+- Saves outputs and a `run-report.json`
 
-First, run the development server:
+## Tech Stack
+- Next.js + TypeScript + Tailwind CSS
+- OpenAI SDK (text + image generation)
+- Sharp (image resize/composition)
+- Zod (strict JSON schema validation)
+- Local file storage for outputs and reports
+
+## Project Structure
+- `src/app/page.tsx`: Tailwind UI for brief upload, assets, and run summary
+- `src/app/api/generate/route.ts`: API endpoint that runs pipeline
+- `src/pipeline/orchestrator.ts`: End-to-end flow coordination
+- `src/rag/*`: RAG-lite index + retrieval from local context files
+- `src/services/*`: prompting, composition, compliance, output writing
+- `context/brand`, `context/market`: local grounding docs
+- `examples/brief.sample.json`: ready-to-run sample brief
+
+## Architecture Flow
+1. **Ingest** brief + optional assets from UI/API.
+2. **Validate** input schema and upload guardrails.
+3. **Retrieve** brand/market context via local RAG-lite search.
+4. **Generate** copy + missing base images via OpenAI (or mock/fallback).
+5. **Compose** aspect-ratio creatives with text and optional logo.
+6. **Evaluate** compliance (copy/legal + logo + color).
+7. **Persist** outputs and `run-report.json`, then return UI summary.
+
+## Setup
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+2. Create `.env.local`:
+   ```bash
+   OPENAI_API_KEY=your_key_here
+   MOCK_MODE=false
+   ```
+   - If `OPENAI_API_KEY` is missing or `MOCK_MODE=true`, the app runs in mock mode.
+3. Start app:
+   ```bash
+   npm run dev
+   ```
+4. Open `http://localhost:3000`.
+
+## macOS TLS fix (if OpenAI calls fail with certificate errors)
+If you see errors like `unable to get local issuer certificate` or `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`, create a local trust bundle and run the trusted dev script:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+mkdir -p certs
+security find-certificate -a -p \
+  /System/Library/Keychains/SystemRootCertificates.keychain \
+  /Library/Keychains/System.keychain > certs/macos-trust-bundle.pem
+npm run dev:trusted
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+This keeps TLS verification enabled while letting Node trust your machine's keychain CAs.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How To Run
+1. Paste/upload JSON brief (use `examples/brief.sample.json` as template).
+   - The sample is a US sportswear campaign (`spring-sportswear-2026`) with `running-socks` and `tennis-shoes`.
+   - Or use **Workspace brief chat** in the main panel to request a campaign in natural language and auto-generate valid JSON.
+2. Optionally upload assets:
+   - product images (filename should include product id or name)
+   - optional `logo` file (filename containing `logo`)
+3. Click **Generate Campaign Creatives**.
+4. Review run summary in UI.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Output
+Generated files are saved under:
+- `outputs/<campaignId>/<productId>/1x1/creative.png`
+- `outputs/<campaignId>/<productId>/9x16/creative.png`
+- `outputs/<campaignId>/<productId>/16x9/creative.png`
+- `outputs/<campaignId>/run-report.json`
 
-## Learn More
+Example from the included sample brief:
+- `outputs/spring-sportswear-2026/running-socks/1x1/creative.png`
+- `outputs/spring-sportswear-2026/tennis-shoes/9x16/creative.png`
 
-To learn more about Next.js, take a look at the following resources:
+From the UI run summary, you can click **Download all outputs (.zip)** to export the full campaign folder.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## RAG-Lite Behavior
+- Context is loaded from `context/brand` and `context/market`.
+- Files are chunked and retrieved by token overlap with campaign/product query.
+- Top snippets are injected into copy and image prompts.
+- Retrieval sources/scores are included in the run report.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Safety and Governance Guardrails
+- **Upload guardrails:** API enforces brief size limit, asset count limit, per-file size limit, and allowed image formats.
+- **Prompt hardening:** prompts separate trusted policy/campaign fields from untrusted retrieved context and explicitly ignore instructions inside context snippets.
+- **Compliance normalization:** copy checks normalize casing, punctuation, and diacritics to better catch obfuscated forbidden words/phrases.
+- **Publish gating:** each output includes `publishReady` and `blockedReasons`; UI highlights review-required creatives.
+- **Trust transparency:** run results indicate whether copy/image came from `live`, `fallback`, `mock`, or `uploaded` sources.
+- **Brief chat contract:** workspace chat only handles campaign-brief generation and validates generated JSON against the campaign schema before applying it.
 
-## Deploy on Vercel
+## Assumptions and Limitations
+- Input format is JSON only.
+- Compliance checks are heuristics for demo purposes:
+  - Logo check validates whether logo was composited when required.
+  - Color check compares average image color to brand palette.
+- No external vector DB; retrieval is local and lightweight.
+- Localization and legal policy checks are not implemented in this version.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Demo Tradeoffs and Production Next Steps
+- **RAG-lite lexical retrieval (demo):** simple, deterministic, no external infra.
+   - **Production:** hybrid retrieval (BM25 + embeddings), metadata filters, freshness/index cache.
+- **Local filesystem outputs (demo):** easy local verification and interview setup.
+   - **Production:** object storage with signed URLs, tenant isolation, retention policies.
+- **Heuristic compliance (demo):** fast baseline checks for logo/color/forbidden phrases.
+   - **Production:** policy engine, market-specific legal rules, human approval workflow.
+- **Synchronous request flow (demo):** straightforward UX and implementation.
+   - **Production:** async jobs/queues, retries, rate limiting, SLA-driven monitoring.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Suggested 2–3 Minute Demo Script
+1. Show JSON brief + uploaded product/logo assets.
+2. Trigger generation and explain reuse-vs-generate decision.
+3. Open output folders for each product/aspect ratio.
+4. Show `run-report.json` with timings, compliance, and retrieved context.
+5. Close with next steps: localization, approval workflow, and performance feedback loop.

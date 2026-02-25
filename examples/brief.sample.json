@@ -1,0 +1,30 @@
+{
+  "campaignId": "spring-sportswear-2026",
+  "market": {
+    "region": "NA",
+    "country": "US",
+    "language": "en-US"
+  },
+  "targetAudience": "Active adults 20-40 who run or train regularly",
+  "products": [
+    {
+      "id": "running-socks",
+      "name": "Running Socks",
+      "keyBenefits": ["Moisture-wicking", "Arch support", "All-day comfort"]
+    },
+    {
+      "id": "tennis-shoes",
+      "name": "Tennis Shoes",
+      "keyBenefits": ["Responsive cushioning", "Lightweight feel", "Durable outsole"]
+    }
+  ],
+  "campaignMessage": "Train stronger with lightweight sportswear built for everyday performance.",
+  "channels": ["instagram", "facebook"],
+  "requiredAspectRatios": ["1:1", "9:16", "16:9"],
+  "brand": {
+    "primaryColors": ["#0057B8", "#00A3E0"],
+    "logoRequired": true,
+    "voice": "Bold, optimistic, and practical",
+    "forbiddenWords": ["cure", "guaranteed"]
+  }
+}
