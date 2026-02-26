@@ -42,3 +42,6 @@ next-env.d.ts
 
 # generated campaign outputs (reproduced locally by running the app)
 /outputs/
+
+# local TLS trust bundle (machine-specific, never commit)
+/certs/
