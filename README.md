@@ -67,11 +67,13 @@ This keeps TLS verification enabled while letting Node trust your machine's keyc
 ## How To Run
 1. Paste/upload JSON brief (use `examples/brief.sample.json` as template).
    - The sample is a US sportswear campaign (`spring-sportswear-2026`) with `running-socks` and `tennis-shoes`.
-   - Or use **Workspace brief chat** in the main panel to request a campaign in natural language and auto-generate valid JSON.
+   - Or use **Workspace brief chat** in the main panel to request a campaign in natural language and draft valid JSON.
 2. Optionally upload assets:
    - product images (filename should include product id or name)
    - optional `logo` file (filename containing `logo`)
-3. Click **Generate Campaign Creatives**.
+3. Generate creatives:
+   - **JSON/Simple flow:** click **Generate** in the left panel.
+   - **Brief chat flow (recommended):** send prompt → review drafted JSON in JSON mode → click **Generate from latest draft**.
 4. Review run summary in UI.
 
 ## Output
@@ -106,8 +108,9 @@ From the UI run summary, you can click **Download all outputs (.zip)** to export
 - Compliance checks are heuristics for demo purposes:
   - Logo check validates whether logo was composited when required.
   - Color check compares average image color to brand palette.
+  - Legal/copy check flags forbidden words with diacritic normalization to catch obfuscated variants.
 - No external vector DB; retrieval is local and lightweight.
-- Localization and legal policy checks are not implemented in this version.
+- Deep localization (translated copy) is not implemented in this version.
 
 ## Demo Tradeoffs and Production Next Steps
 - **RAG-lite lexical retrieval (demo):** simple, deterministic, no external infra.
@@ -121,7 +124,24 @@ From the UI run summary, you can click **Download all outputs (.zip)** to export
 
 ## Suggested 2–3 Minute Demo Script
 1. Show JSON brief + uploaded product/logo assets.
-2. Trigger generation and explain reuse-vs-generate decision.
-3. Open output folders for each product/aspect ratio.
-4. Show `run-report.json` with timings, compliance, and retrieved context.
-5. Close with next steps: localization, approval workflow, and performance feedback loop.
+2. Show brief-chat drafting a valid brief, then click **Generate from latest draft**.
+3. Explain reuse-vs-generate decision and trust source labels in the run results.
+4. Open output folders for each product/aspect ratio.
+5. Show `run-report.json` with timings, compliance, and retrieved context.
+
+## Interview Submission Checklist
+Use this checklist before sending the take-home package:
+
+### Repository
+- [ ] Push this project to a **public GitHub repository**.
+- [ ] Verify README instructions work end-to-end on a clean machine.
+- [ ] Confirm sample run artifacts are present under `outputs/`.
+
+### Demo Video (required)
+- [ ] Record a **2–3 minute** walkthrough video.
+- [ ] Include: brief input, generation trigger, outputs by ratio, and `run-report.json`.
+- [ ] Export/shareable file or link ready for Talent Partner.
+
+### Interview Readiness
+- [ ] Prepare a 30-minute walkthrough: architecture, tradeoffs, safeguards, and next steps.
+- [ ] Be ready to explain where each required item is implemented in code.

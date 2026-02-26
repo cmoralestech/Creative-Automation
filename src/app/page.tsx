@@ -216,6 +216,7 @@ export default function Home() {
   const [briefChatInput, setBriefChatInput] = useState("");
   const [briefChatModel, setBriefChatModel] = useState<BriefChatModel>("gpt-4.1-mini");
   const [briefChatLoading, setBriefChatLoading] = useState(false);
+  const [pendingGeneratedBrief, setPendingGeneratedBrief] = useState<string | null>(null);
   const [briefChatMessages, setBriefChatMessages] = useState<BriefChatMessage[]>([
     initialBriefChatMessage,
   ]);
@@ -281,7 +282,7 @@ export default function Home() {
       )
     : 0;
 
-  async function handleGenerate() {
+  async function handleGenerate(briefOverride?: string) {
     setError(null);
     setSubmitting(true);
     setResult(null);
@@ -290,7 +291,7 @@ export default function Home() {
 
     try {
       const payload = new FormData();
-      const briefPayload = inputMode === "simple" ? simplePreviewJson : briefText;
+      const briefPayload = briefOverride ?? (inputMode === "simple" ? simplePreviewJson : briefText);
       payload.set("brief", briefPayload);
       files.forEach((file) => payload.append("assets", file));
       // Simulate progress updates (since API is synchronous, we estimate based on time)
@@ -439,9 +440,13 @@ export default function Home() {
         {
           id: `assistant-${Date.now()}`,
           role: "assistant",
-          text: body.reason ? `${summary} Note: ${body.reason}` : summary,
+          text: body.reason
+            ? `${summary} Note: ${body.reason} Review the JSON, then click Generate from latest draft.`
+            : `${summary} Review the JSON, then click Generate from latest draft.`,
         },
       ]);
+
+      setPendingGeneratedBrief(nextBriefText);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Unknown chat generation error.";
       setBriefChatMessages((prev) => [
@@ -791,7 +796,7 @@ export default function Home() {
             <button
               className="inline-flex w-full cursor-pointer items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
               type="button"
-              onClick={handleGenerate}
+              onClick={() => void handleGenerate()}
               disabled={submitting}
             >
               {submitting ? (
@@ -830,6 +835,7 @@ export default function Home() {
                   onClick={() => {
                     setBriefChatMessages([{ ...initialBriefChatMessage, id: `assistant-intro-${Date.now()}` }]);
                     setBriefChatInput("");
+                    setPendingGeneratedBrief(null);
                   }}
                   className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                 >
@@ -1162,6 +1168,21 @@ export default function Home() {
                     </button>
                   </div>
                 </div>
+                {pendingGeneratedBrief ? (
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2">
+                    <p className="text-[11px] text-indigo-700">
+                      Draft JSON ready. Review it in JSON mode, then generate when ready.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void handleGenerate(pendingGeneratedBrief)}
+                      disabled={submitting || briefChatLoading}
+                      className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {submitting ? "Generating..." : "Generate from latest draft"}
+                    </button>
+                  </div>
+                ) : null}
                 {files.length > 0 ? (
                   <div className="mt-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
                     <div className="mb-2 flex items-center justify-between">
@@ -1213,7 +1234,7 @@ export default function Home() {
                   <p className="mt-2 text-center text-[11px] text-amber-700">{assetNotice}</p>
                 ) : null}
                 <p className="mt-2 text-center text-[11px] text-slate-500">
-                  Brief-only mode: this chat accepts campaign-brief requests and outputs valid JSON for this model.
+                  Brief mode: draft JSON with chat, then click Generate from latest draft to run creatives.
                 </p>
               </div>
             </div>
