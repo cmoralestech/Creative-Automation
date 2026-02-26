@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated campaign outputs (reproduced locally by running the app)
+/outputs/
