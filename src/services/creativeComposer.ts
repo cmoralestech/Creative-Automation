@@ -1,7 +1,7 @@
 import { ASPECT_RATIO_DIMENSIONS, AspectRatio } from "@/domain/campaignBrief";
 import sharp from "sharp";
 
-export type ComposeResult = {
+export type ComposedCreativeDto = {
   image: Buffer;
   logoPlaced: boolean;
 };
@@ -73,7 +73,7 @@ export async function composeCreative({
   logoImage: Buffer | null;
   brandTintColor?: string | null;
   brandTintOpacity?: number;
-}): Promise<ComposeResult> {
+}): Promise<ComposedCreativeDto> {
   const size = ASPECT_RATIO_DIMENSIONS[aspectRatio];
   const resized = await sharp(baseImage)
     .resize(size.width, size.height, { fit: "cover" })

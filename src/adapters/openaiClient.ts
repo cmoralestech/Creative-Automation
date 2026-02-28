@@ -2,19 +2,19 @@ import OpenAI from "openai";
 
 export type GenerationSource = "live" | "mock" | "fallback";
 
-export type GeneratedCopyResult = {
+export type GeneratedCopyDto = {
   text: string;
   source: GenerationSource;
   reason: string | null;
 };
 
-export type GeneratedImageResult = {
+export type GeneratedImageDto = {
   image: Buffer;
   source: GenerationSource;
   reason: string | null;
 };
 
-export type GeneratedRunSummaryResult = {
+export type GeneratedRunSummaryDto = {
   text: string;
   source: GenerationSource;
   reason: string | null;
@@ -34,10 +34,10 @@ export class OpenAIClient {
     return this.mockMode;
   }
 
-  async generateCopy(prompt: string): Promise<GeneratedCopyResult> {
+  async generateCopy(prompt: string, model: string = "gpt-4.1-mini"): Promise<GeneratedCopyDto> {
     if (this.mockMode || !this.client) {
       return {
-        text: "Power your day with smarter choices, made for your routine.",
+        text: "Unleash your potential. Move with purpose. Nike empowers every step.",
         source: "mock",
         reason: process.env.MOCK_MODE === "true" ? "mock-mode-enabled" : "missing-openai-api-key",
       };
@@ -45,7 +45,7 @@ export class OpenAIClient {
 
     try {
       const response = await this.client.responses.create({
-        model: "gpt-4.1-mini",
+        model,
         input: prompt,
         max_output_tokens: 80,
         temperature: 0.7,
@@ -67,7 +67,7 @@ export class OpenAIClient {
     }
   }
 
-  async generateImage(prompt: string): Promise<GeneratedImageResult> {
+  async generateImage(prompt: string): Promise<GeneratedImageDto> {
     if (this.mockMode || !this.client) {
       return {
         image: await this.generatePlaceholderImage(prompt),
@@ -110,7 +110,11 @@ export class OpenAIClient {
     }
   }
 
-  async generateRunSummary(prompt: string, fallbackText: string): Promise<GeneratedRunSummaryResult> {
+  async generateRunSummary(
+    prompt: string,
+    fallbackText: string,
+    model: string = "gpt-4.1-mini",
+  ): Promise<GeneratedRunSummaryDto> {
     if (this.mockMode || !this.client) {
       return {
         text: fallbackText,
@@ -121,7 +125,7 @@ export class OpenAIClient {
 
     try {
       const response = await this.client.responses.create({
-        model: "gpt-4.1-mini",
+        model,
         input: [
           {
             role: "system",
@@ -231,21 +235,20 @@ export class OpenAIClient {
     const safeLabel = label.slice(0, 100).replace(/[<>&]/g, "");
     const svg = `
       <svg width="1536" height="1024" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#0f172a" />
-            <stop offset="100%" stop-color="#1d4ed8" />
-          </linearGradient>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#bg)" />
-        <circle cx="1240" cy="220" r="180" fill="#22d3ee" opacity="0.4" />
-        <circle cx="280" cy="760" r="220" fill="#a78bfa" opacity="0.25" />
-        <text x="80" y="180" font-size="42" fill="#ffffff" font-family="Arial, sans-serif" font-weight="700">
+        <rect width="100%" height="100%" fill="#000" />
+        <ellipse cx="768" cy="512" rx="600" ry="400" fill="#CEFF00" opacity="0.08" />
+        <path d="M400 800 Q800 900 1200 400" stroke="#CEFF00" stroke-width="32" fill="none" opacity="0.7" />
+        <text x="80" y="200" font-size="120" fill="#CEFF00" font-family="Arial Black, Arial, sans-serif" font-weight="900" letter-spacing="-8">
+          NIKE
+        </text>
+        <text x="80" y="320" font-size="48" fill="#fff" font-family="Arial, sans-serif" font-weight="700">
           MOCK IMAGE
         </text>
-        <text x="80" y="250" font-size="30" fill="#e2e8f0" font-family="Arial, sans-serif">
+        <text x="80" y="400" font-size="36" fill="#e2e8f0" font-family="Arial, sans-serif">
           ${safeLabel}
         </text>
+        <!-- Swoosh motif -->
+        <path d="M300 900 Q700 1000 1300 600" stroke="#fff" stroke-width="24" fill="none" opacity="0.9" />
       </svg>
     `;
 

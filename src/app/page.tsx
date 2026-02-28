@@ -70,6 +70,14 @@ type BriefChatResponse = {
   reason: string | null;
 };
 
+type AssetRole = "logo" | "product" | "reference" | "unknown";
+
+type AssetMetadata = {
+  role: AssetRole;
+  productId: string;
+  semanticHint: string;
+};
+
 const briefChatModelOptions = [
   { value: "gpt-4.1-mini", label: "GPT-4.1 mini" },
   { value: "gpt-4.1", label: "GPT-4.1" },
@@ -179,6 +187,16 @@ function summarizeRequest(briefText: string): string {
   }
 }
 
+function getFileFingerprint(file: File): string {
+  return `${file.name}-${file.size}-${file.lastModified}`;
+}
+
+const DEFAULT_ASSET_METADATA: AssetMetadata = {
+  role: "unknown",
+  productId: "",
+  semanticHint: "",
+};
+
 export default function Home() {
   const [inputMode, setInputMode] = useState<InputMode>("simple");
   const [briefText, setBriefText] = useState(defaultBrief);
@@ -207,6 +225,7 @@ export default function Home() {
     ],
   });
   const [files, setFiles] = useState<File[]>([]);
+  const [assetMetadataByKey, setAssetMetadataByKey] = useState<Record<string, AssetMetadata>>({});
   const [submitting, setSubmitting] = useState(false);
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [progressStep, setProgressStep] = useState<string | null>(null);
@@ -271,6 +290,22 @@ export default function Home() {
   }
 
   const simplePreviewJson = JSON.stringify(buildBriefFromSimpleForm(), null, 2);
+  const productIdOptions = useMemo(() => {
+    try {
+      const parsed = JSON.parse(inputMode === "simple" ? simplePreviewJson : briefText) as {
+        products?: { id?: string; name?: string }[];
+      };
+
+      return (parsed.products ?? [])
+        .map((product) => ({
+          id: (product.id ?? "").trim(),
+          name: (product.name ?? "").trim(),
+        }))
+        .filter((product) => product.id.length > 0);
+    } catch {
+      return [];
+    }
+  }, [inputMode, simplePreviewJson, briefText]);
   const currentRequestSummary = summarizeRequest(inputMode === "simple" ? simplePreviewJson : briefText);
   const totalOutputs = result
     ? result.productRuns.reduce((sum, run) => sum + run.outputs.length, 0)
@@ -293,6 +328,21 @@ export default function Home() {
       const payload = new FormData();
       const briefPayload = briefOverride ?? (inputMode === "simple" ? simplePreviewJson : briefText);
       payload.set("brief", briefPayload);
+      payload.set("model", briefChatModel);
+      payload.set(
+        "assetMetadata",
+        JSON.stringify(
+          files.map((file) => {
+            const key = getFileFingerprint(file);
+            const metadata = assetMetadataByKey[key] ?? DEFAULT_ASSET_METADATA;
+            return {
+              role: metadata.role,
+              productId: metadata.productId.trim(),
+              semanticHint: metadata.semanticHint.trim(),
+            };
+          }),
+        ),
+      );
       files.forEach((file) => payload.append("assets", file));
       // Simulate progress updates (since API is synchronous, we estimate based on time)
       progressInterval = setInterval(() => {
@@ -498,8 +548,36 @@ export default function Home() {
   }
 
   function removeAssetAt(indexToRemove: number) {
-    setFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
+    setFiles((prev) => {
+      const removed = prev[indexToRemove];
+      const next = prev.filter((_, index) => index !== indexToRemove);
+      if (removed) {
+        const removedKey = getFileFingerprint(removed);
+        setAssetMetadataByKey((metadata) => {
+          const clone = { ...metadata };
+          delete clone[removedKey];
+          return clone;
+        });
+      }
+      return next;
+    });
     setAssetNotice(null);
+  }
+
+  function updateAssetMetadata(index: number, next: Partial<AssetMetadata>) {
+    const file = files[index];
+    if (!file) {
+      return;
+    }
+
+    const key = getFileFingerprint(file);
+    setAssetMetadataByKey((prev) => ({
+      ...prev,
+      [key]: {
+        ...(prev[key] ?? DEFAULT_ASSET_METADATA),
+        ...next,
+      },
+    }));
   }
 
   function appendSelectedAssets(incomingFiles: File[]) {
@@ -521,6 +599,14 @@ export default function Home() {
       }
 
       const limited = uniqueFiles.slice(0, MAX_CHAT_ASSETS);
+      setAssetMetadataByKey((prev) => {
+        const next: Record<string, AssetMetadata> = {};
+        for (const file of limited) {
+          const key = getFileFingerprint(file);
+          next[key] = prev[key] ?? { ...DEFAULT_ASSET_METADATA };
+        }
+        return next;
+      });
       if (uniqueFiles.length > MAX_CHAT_ASSETS) {
         setAssetNotice(`You can attach up to ${MAX_CHAT_ASSETS} images.`);
       } else {
@@ -1193,6 +1279,7 @@ export default function Home() {
                         type="button"
                         onClick={() => {
                           setFiles([]);
+                          setAssetMetadataByKey({});
                           setAssetNotice(null);
                         }}
                         className="cursor-pointer text-[11px] font-medium text-slate-500 transition hover:text-slate-700"
@@ -1204,27 +1291,94 @@ export default function Home() {
                       {files.map((file, index) => (
                         <div
                           key={`${file.name}-${file.size}-${index}`}
-                          className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2"
+                          className="rounded-lg border border-slate-200 bg-slate-50 p-2"
                         >
-                          <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white">
-                            <img
-                              src={assetPreviewUrls[index]?.url}
-                              alt={file.name}
-                              className="h-full w-full object-cover"
-                            />
+                          <div className="flex items-center gap-2">
+                            <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white">
+                              <img
+                                src={assetPreviewUrls[index]?.url}
+                                alt={file.name}
+                                className="h-full w-full object-cover"
+                              />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-medium text-slate-700">{file.name}</p>
+                              <p className="text-[11px] text-slate-500">{Math.max(1, Math.round(file.size / 1024))} KB</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeAssetAt(index)}
+                              className="cursor-pointer rounded-full px-1.5 py-0.5 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700"
+                              aria-label={`Remove ${file.name}`}
+                            >
+                              ×
+                            </button>
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-medium text-slate-700">{file.name}</p>
-                            <p className="text-[11px] text-slate-500">{Math.max(1, Math.round(file.size / 1024))} KB</p>
+
+                          <div className="mt-2 grid grid-cols-1 gap-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="text-[11px] text-slate-500">
+                                Role
+                                <select
+                                  value={(assetMetadataByKey[getFileFingerprint(file)] ?? DEFAULT_ASSET_METADATA).role}
+                                  onChange={(event) =>
+                                    updateAssetMetadata(index, {
+                                      role: event.target.value as AssetRole,
+                                      productId:
+                                        event.target.value === "product"
+                                          ? (assetMetadataByKey[getFileFingerprint(file)]?.productId ?? "")
+                                          : "",
+                                    })
+                                  }
+                                  className="mt-1 h-8 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700"
+                                >
+                                  <option value="unknown">Unknown (fallback)</option>
+                                  <option value="logo">Logo</option>
+                                  <option value="product">Product</option>
+                                  <option value="reference">Reference</option>
+                                </select>
+                              </label>
+                              <label className="text-[11px] text-slate-500">
+                                Product link
+                                <select
+                                  value={(assetMetadataByKey[getFileFingerprint(file)] ?? DEFAULT_ASSET_METADATA).productId}
+                                  onChange={(event) =>
+                                    updateAssetMetadata(index, {
+                                      productId: event.target.value,
+                                    })
+                                  }
+                                  disabled={
+                                    (assetMetadataByKey[getFileFingerprint(file)] ?? DEFAULT_ASSET_METADATA)
+                                      .role !== "product"
+                                  }
+                                  className="mt-1 h-8 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700 disabled:opacity-50"
+                                >
+                                  <option value="">Select product</option>
+                                  {productIdOptions.map((product) => (
+                                    <option key={product.id} value={product.id}>
+                                      {product.name ? `${product.name} (${product.id})` : product.id}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
+                            <label className="text-[11px] text-slate-500">
+                              Semantic hint
+                              <input
+                                value={
+                                  (assetMetadataByKey[getFileFingerprint(file)] ?? DEFAULT_ASSET_METADATA)
+                                    .semanticHint
+                                }
+                                onChange={(event) =>
+                                  updateAssetMetadata(index, {
+                                    semanticHint: event.target.value,
+                                  })
+                                }
+                                className="mt-1 h-8 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700"
+                                placeholder="e.g. athlete sprinting at sunrise, city track"
+                              />
+                            </label>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => removeAssetAt(index)}
-                            className="cursor-pointer rounded-full px-1.5 py-0.5 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700"
-                            aria-label={`Remove ${file.name}`}
-                          >
-                            ×
-                          </button>
                         </div>
                       ))}
                     </div>

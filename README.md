@@ -34,6 +34,11 @@ Local web app that demonstrates campaign creative automation for social ads:
 6. **Evaluate** compliance (copy/legal + logo + color).
 7. **Persist** outputs and `run-report.json`, then return UI summary.
 
+## Type Naming Convention
+- Domain layer (`src/domain/*`) keeps business model names (no DTO suffix required).
+- Boundary contracts in adapters/services/API/pipeline use explicit `*Dto` names.
+- Source labels and orchestration contracts stay separate from domain entities to keep boundaries clear.
+
 ## Setup
 1. Install dependencies:
    ```bash

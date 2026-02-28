@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 
 import { CampaignBrief, parseCampaignBrief } from "@/domain/campaignBrief";
+import { ApiErrorResponseDto } from "@/app/api/_shared/dtos";
 
 export const runtime = "nodejs";
 
@@ -92,12 +93,17 @@ const CAMPAIGN_BRIEF_JSON_SCHEMA = {
   },
 } as const;
 
-type BriefChatResult = {
+type BriefChatResponseDto = {
   brief: CampaignBrief;
   source: "live" | "mock" | "fallback";
   model: BriefChatModel;
   repaired: boolean;
   reason: string | null;
+};
+
+type BriefChatRequestDto = {
+  request?: unknown;
+  model?: unknown;
 };
 
 function sanitizePrompt(input: string): string {
@@ -186,7 +192,7 @@ async function generateBriefWithModel(
   client: OpenAI,
   userRequest: string,
   model: BriefChatModel,
-): Promise<BriefChatResult> {
+): Promise<BriefChatResponseDto> {
   const systemPrompt = [
     "You generate only campaign brief JSON for a social creative pipeline.",
     "Return only valid JSON matching the response schema.",
@@ -238,20 +244,20 @@ async function generateBriefWithModel(
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const payload = (await request.json()) as { request?: unknown; model?: unknown };
+    const payload = (await request.json()) as BriefChatRequestDto;
     const userRequest = typeof payload.request === "string" ? sanitizePrompt(payload.request) : "";
     const selectedModel = coerceModel(payload.model);
 
     if (!userRequest) {
       return Response.json(
-        { error: "Provide a campaign request in natural language." },
+        { error: "Provide a campaign request in natural language." } satisfies ApiErrorResponseDto,
         { status: 400 },
       );
     }
 
     if (userRequest.length > MAX_REQUEST_CHARS) {
       return Response.json(
-        { error: `Request is too long. Maximum is ${MAX_REQUEST_CHARS} characters.` },
+        { error: `Request is too long. Maximum is ${MAX_REQUEST_CHARS} characters.` } satisfies ApiErrorResponseDto,
         { status: 400 },
       );
     }
@@ -266,14 +272,14 @@ export async function POST(request: Request): Promise<Response> {
         model: selectedModel,
         repaired: false,
         reason: process.env.MOCK_MODE === "true" ? "mock-mode-enabled" : "missing-openai-api-key",
-      });
+      } satisfies BriefChatResponseDto);
     }
 
     const client = new OpenAI({ apiKey });
 
     try {
       const result = await generateBriefWithModel(client, userRequest, selectedModel);
-      return Response.json(result);
+      return Response.json(result satisfies BriefChatResponseDto);
     } catch (error) {
       const reason = error instanceof Error ? error.message : "Model generation failed.";
       return Response.json({
@@ -282,10 +288,10 @@ export async function POST(request: Request): Promise<Response> {
         model: selectedModel,
         repaired: false,
         reason,
-      });
+      } satisfies BriefChatResponseDto);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected brief generation error.";
-    return Response.json({ error: message }, { status: 500 });
+    return Response.json({ error: message } satisfies ApiErrorResponseDto, { status: 500 });
   }
 }

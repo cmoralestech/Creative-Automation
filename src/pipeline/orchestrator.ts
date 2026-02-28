@@ -6,10 +6,11 @@ import { ASPECT_RATIO_DIMENSIONS, CampaignBrief } from "@/domain/campaignBrief";
 import { buildRagIndex } from "@/rag/indexer";
 import { retrieveContext } from "@/rag/retriever";
 import {
+  buildVisualContextForProduct,
   buildDefaultLogoAsset,
   findLogoAsset,
   findProductAsset,
-  UploadedAsset,
+  UploadedAssetDto,
 } from "@/services/assetService";
 import {
   evaluateCopyCompliance,
@@ -20,7 +21,7 @@ import { composeCreative } from "@/services/creativeComposer";
 import { writeCreative, writeRunReport } from "@/services/outputWriter";
 import { buildCopyPrompt, buildImagePrompt } from "@/services/promptBuilder";
 
-export type ProductRun = {
+export type ProductRunDto = {
   productId: string;
   productName: string;
   usedExistingAsset: boolean;
@@ -61,7 +62,7 @@ export type ProductRun = {
   }[];
 };
 
-export type PipelineResult = {
+export type PipelineResultDto = {
   campaignId: string;
   mode: "mock" | "live";
   reportPath: string;
@@ -72,18 +73,20 @@ export type PipelineResult = {
     source: GenerationSource;
     reason: string | null;
   };
-  productRuns: ProductRun[];
+  productRuns: ProductRunDto[];
 };
 
 export async function runPipeline({
   brief,
   uploadedAssets,
   workspaceRoot,
+  textModel = "gpt-4.1-mini",
 }: {
   brief: CampaignBrief;
-  uploadedAssets: UploadedAsset[];
+  uploadedAssets: UploadedAssetDto[];
   workspaceRoot: string;
-}): Promise<PipelineResult> {
+  textModel?: string;
+}): Promise<PipelineResultDto> {
   const startedAt = performance.now();
   const client = new OpenAIClient();
 
@@ -114,24 +117,27 @@ export async function runPipeline({
         .filter(Boolean)
         .join(" ");
       const ragMatches = retrieveContext(ragIndex, query, 4);
+      const visualContext = buildVisualContextForProduct(product, uploadedAssets);
 
-      const copyPrompt = buildCopyPrompt(brief, product, ragMatches);
-      const copyResult = await client.generateCopy(copyPrompt);
+      const copyPrompt = buildCopyPrompt(brief, product, ragMatches, visualContext);
+      const copyResult = await client.generateCopy(copyPrompt, textModel);
       const generatedCopy = copyResult.text;
       const copyCompliance = evaluateCopyCompliance(generatedCopy, brief.brand.forbiddenWords);
 
       let baseImage = productAsset?.buffer;
-      let imageSource: ProductRun["generation"]["image"]["source"] = "uploaded";
+      let imageSource: ProductRunDto["generation"]["image"]["source"] = "uploaded";
       let imageReason: string | null = null;
 
       if (!baseImage) {
-        const imageResult = await client.generateImage(buildImagePrompt(brief, product, ragMatches));
+        const imageResult = await client.generateImage(
+          buildImagePrompt(brief, product, ragMatches, visualContext),
+        );
         baseImage = imageResult.image;
         imageSource = imageResult.source;
         imageReason = imageResult.reason;
       }
 
-      const outputs: ProductRun["outputs"] = [];
+      const outputs: ProductRunDto["outputs"] = [];
       const productBlockedReasons = new Set<string>();
 
       if (!copyCompliance.passed) {
@@ -271,7 +277,7 @@ export async function runPipeline({
     "Write 2-3 sentences. Mention one positive outcome and one next action if review is needed.",
   ].join("\n");
 
-  const runSummary = await client.generateRunSummary(runSummaryPrompt, fallbackSummary);
+  const runSummary = await client.generateRunSummary(runSummaryPrompt, fallbackSummary, textModel);
 
   const report = {
     campaignId: brief.campaignId,

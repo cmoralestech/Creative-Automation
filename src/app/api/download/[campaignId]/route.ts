@@ -3,8 +3,13 @@ import path from "node:path";
 import { PassThrough, Readable } from "node:stream";
 
 import archiver from "archiver";
+import { ApiErrorResponseDto } from "@/app/api/_shared/dtos";
 
 export const runtime = "nodejs";
+
+type DownloadRouteParamsDto = {
+  campaignId: string;
+};
 
 function isSafeCampaignId(value: string): boolean {
   return /^[a-zA-Z0-9_-]+$/.test(value);
@@ -12,13 +17,13 @@ function isSafeCampaignId(value: string): boolean {
 
 export async function GET(
   _request: Request,
-  context: { params: Promise<{ campaignId: string }> },
+  context: { params: Promise<DownloadRouteParamsDto> },
 ): Promise<Response> {
   const { campaignId } = await context.params;
 
   if (!isSafeCampaignId(campaignId)) {
     return Response.json(
-      { error: "Invalid campaignId. Use only letters, numbers, dash, or underscore." },
+      { error: "Invalid campaignId. Use only letters, numbers, dash, or underscore." } satisfies ApiErrorResponseDto,
       { status: 400 },
     );
   }
@@ -28,7 +33,10 @@ export async function GET(
   try {
     await access(outputDir);
   } catch {
-    return Response.json({ error: "Campaign output folder not found." }, { status: 404 });
+    return Response.json(
+      { error: "Campaign output folder not found." } satisfies ApiErrorResponseDto,
+      { status: 404 },
+    );
   }
 
   const archive = archiver("zip", { zlib: { level: 9 } });

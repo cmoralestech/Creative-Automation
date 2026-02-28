@@ -22,10 +22,21 @@ function formatContext(matches: RagMatch[]): string {
     .join("\n");
 }
 
+function formatVisualContext(lines: string[]): string {
+  if (lines.length === 0) {
+    return "<uploaded_visual_context>No uploaded visual context provided.</uploaded_visual_context>";
+  }
+
+  return lines
+    .map((line, index) => `<uploaded_visual_context rank="${index + 1}">${sanitizePromptText(line)}</uploaded_visual_context>`)
+    .join("\n");
+}
+
 export function buildCopyPrompt(
   brief: CampaignBrief,
   product: ProductInput,
   ragMatches: RagMatch[],
+  visualContext: string[] = [],
 ): string {
   const message = sanitizePromptText(brief.campaignMessage);
   const audience = sanitizePromptText(brief.targetAudience);
@@ -60,6 +71,10 @@ Constraints: Keep it conversion-oriented, specific, and compliant.
 <retrieved_context>
 ${formatContext(ragMatches)}
 </retrieved_context>
+
+<uploaded_visuals>
+${formatVisualContext(visualContext)}
+</uploaded_visuals>
 `.trim();
 }
 
@@ -67,6 +82,7 @@ export function buildImagePrompt(
   brief: CampaignBrief,
   product: ProductInput,
   ragMatches: RagMatch[],
+  visualContext: string[] = [],
 ): string {
   const productName = sanitizePromptText(product.name);
   const audience = sanitizePromptText(brief.targetAudience);
@@ -96,5 +112,9 @@ Brand colors to favor: ${brandColors.join(", ") || "No strict palette"}
 <retrieved_context>
 ${formatContext(ragMatches)}
 </retrieved_context>
+
+<uploaded_visuals>
+${formatVisualContext(visualContext)}
+</uploaded_visuals>
 `.trim();
 }
