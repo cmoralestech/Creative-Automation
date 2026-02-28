@@ -94,6 +94,12 @@ Example from the included sample brief:
 
 From the UI run summary, you can click **Download all outputs (.zip)** to export the full campaign folder.
 
+## Storage Strategy (POC vs Production)
+- **POC implementation (current):** local filesystem storage via `outputs/` for generated creatives and `run-report.json`, plus ZIP export from the UI.
+- **Why this is used in the take-home:** deterministic local runs, zero cloud setup overhead, and fast reviewer validation.
+- **Production path:** replace local writes with object storage (e.g., AWS S3, Azure Blob Storage, Dropbox API) behind the storage service boundary in `src/services/outputWriter.ts`.
+- **Production expectations:** signed URLs, tenant isolation, retention policies, and audit logging for generated/transient assets.
+
 ## RAG-Lite Behavior
 - Context is loaded from `context/brand` and `context/market`.
 - Files are chunked and ranked with hybrid retrieval: BM25 lexical scoring + semantic similarity.
