@@ -48,8 +48,14 @@ Local web app that demonstrates campaign creative automation for social ads:
    ```bash
    OPENAI_API_KEY=your_key_here
    MOCK_MODE=false
+   ENABLE_IMAGE_SEMANTIC_EXTRACTION=true
+   ENABLE_LIVE_IMAGE_VISION=false
+   IMAGE_SEMANTIC_MODEL=gpt-4.1-mini
    ```
    - If `OPENAI_API_KEY` is missing or `MOCK_MODE=true`, the app runs in mock mode.
+   - `ENABLE_IMAGE_SEMANTIC_EXTRACTION=true` enables asset semantic analysis.
+   - `ENABLE_LIVE_IMAGE_VISION=true` enables OpenAI vision for image semantic extraction.
+   - If live vision is disabled or fails, semantic extraction falls back to deterministic filename heuristics.
 3. Start app:
    ```bash
    npm run dev
