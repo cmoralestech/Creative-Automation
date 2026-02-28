@@ -6,6 +6,8 @@ export type RagChunk = {
   source: string;
   text: string;
   tokens: Set<string>;
+  tokenCounts: Map<string, number>;
+  tokenCount: number;
 };
 
 export type RagIndex = {
@@ -68,12 +70,25 @@ function normalizeText(input: string): string {
     .replace(/[^a-z0-9\s]/g, " ");
 }
 
-function tokenize(input: string): Set<string> {
-  return new Set(
-    normalizeText(input)
-      .split(/\s+/)
-      .filter((token) => token.length > 2 && !STOP_WORDS.has(token)),
-  );
+function tokenize(input: string): {
+  tokens: Set<string>;
+  tokenCounts: Map<string, number>;
+  tokenCount: number;
+} {
+  const parts = normalizeText(input)
+    .split(/\s+/)
+    .filter((token) => token.length > 2 && !STOP_WORDS.has(token));
+
+  const tokenCounts = new Map<string, number>();
+  for (const token of parts) {
+    tokenCounts.set(token, (tokenCounts.get(token) ?? 0) + 1);
+  }
+
+  return {
+    tokens: new Set(parts),
+    tokenCounts,
+    tokenCount: parts.length,
+  };
 }
 
 function chunkText(source: string, text: string): RagChunk[] {
@@ -105,12 +120,17 @@ function chunkText(source: string, text: string): RagChunk[] {
 
   return windows
     .filter((segment) => segment.length >= 40)
-    .map((segment, index) => ({
-      id: `${path.basename(source)}:${index}`,
-      source,
-      text: segment,
-      tokens: tokenize(segment),
-    }));
+    .map((segment, index) => {
+      const tokenized = tokenize(segment);
+      return {
+        id: `${path.basename(source)}:${index}`,
+        source,
+        text: segment,
+        tokens: tokenized.tokens,
+        tokenCounts: tokenized.tokenCounts,
+        tokenCount: tokenized.tokenCount,
+      };
+    });
 }
 
 async function loadFiles(rootDir: string): Promise<string[]> {

@@ -36,7 +36,37 @@
 7. Add lightweight metrics dashboard (duration, publish-ready ratio, source mix).
 8. Add advanced localization and market-specific policy packs.
 
-## Interview Presentation Notes
-- Lead with the end-to-end architecture and the two-step brief drafting/generation UX.
-- Call out trust/compliance visibility as a governance differentiator.
-- Show how outputs and `run-report.json` support review workflows at scale.
+## Asset Semantic Extraction & Prompt Enrichment
+- Expose semantic extraction results (manual and auto) in `run-report.json` for each generation run. (Pending)
+- Gate live semantic extraction and prompt enrichment behind feature flags (env/config) for safe rollout and benchmarking.
+- Integrate live image analysis API (OpenAI Vision, Google Vision, etc.) in `imageSemanticClient`, controlled by feature flag.
+- Add robust error handling and fallback logic for extraction failures (manual metadata or safe defaults).
+- Create benchmark briefs and a QA checklist to validate extraction accuracy and prompt influence.
+- Update developer documentation to explain new asset semantic flow, DTOs, and feature flags.
+
+## RAG & Context Retrieval
+- Hybrid retrieval is now implemented with BM25 lexical scoring + heuristic semantic similarity.
+- Add true embedding retrieval and metadata filters for improved context relevance.
+- Add freshness/index cache for context files to support rapid iteration and production scaling.
+
+## Output & Compliance
+- Persist extraction details, compliance results, and retrieval sources in `run-report.json` for transparency and debugging.
+- Expand compliance checks to support market-specific legal rules and human approval workflow.
+
+## Safety & Governance
+- Strengthen feature flag and kill switch coverage for all new semantic and compliance features.
+- Document all new guardrails and fallback logic in README and developer docs.
+
+## Demo & Interview Readiness
+- Ensure demo script and checklist reflect new semantic extraction and reporting features.
+- Prepare sample run artifacts showing extraction details in outputs and reports.
+
+---
+
+# Completed
+- Dynamic model selection end-to-end
+- Asset metadata UI/API/plumbing
+- Prompt visual context injection
+- Deterministic mock semantic extraction
+- Asset DTO extension and merge logic
+- Static checks and build validation

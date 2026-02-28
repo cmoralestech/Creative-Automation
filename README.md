@@ -96,9 +96,13 @@ From the UI run summary, you can click **Download all outputs (.zip)** to export
 
 ## RAG-Lite Behavior
 - Context is loaded from `context/brand` and `context/market`.
-- Files are chunked and retrieved by token overlap with campaign/product query.
+- Files are chunked and ranked with hybrid retrieval: BM25 lexical scoring + semantic similarity.
 - Top snippets are injected into copy and image prompts.
-- Retrieval sources/scores are included in the run report.
+- Retrieval sources, scores, and scoring signals are included in the run report.
+- Retrieval mode is configurable with `RAG_RETRIEVAL_MODE=hybrid|lexical|semantic` (default `hybrid`).
+- Hybrid score weights are configurable with `RAG_HYBRID_LEXICAL_WEIGHT` and `RAG_HYBRID_SEMANTIC_WEIGHT`.
+- Metadata-aware filtering is supported (region/country/language/product context), with automatic fallback to full corpus when filters are too strict.
+- Metadata filter strictness is tunable via `RAG_METADATA_FILTER_MIN_MATCHES`.
 
 ## Safety and Governance Guardrails
 - **Upload guardrails:** API enforces brief size limit, asset count limit, per-file size limit, and allowed image formats.
@@ -107,6 +111,42 @@ From the UI run summary, you can click **Download all outputs (.zip)** to export
 - **Publish gating:** each output includes `publishReady` and `blockedReasons`; UI highlights review-required creatives.
 - **Trust transparency:** run results indicate whether copy/image came from `live`, `fallback`, `mock`, or `uploaded` sources.
 - **Brief chat contract:** workspace chat only handles campaign-brief generation and validates generated JSON against the campaign schema before applying it.
+
+## Asset Semantic Extraction & Prompt Enrichment
+- Semantic extraction is applied at upload time and merged with manual metadata to improve asset role matching and visual prompt context.
+- Asset DTOs extended to support semantic fields and merge manual/auto hints.
+- Deterministic mock semantic extraction is implemented for local testing and safe fallback.
+- Live image analysis API integration (OpenAI Vision, Google Vision, etc.) is planned and will be gated by feature flag for safe rollout.
+- Feature flags and kill switches are being added to control semantic extraction and prompt enrichment features.
+- Benchmark briefs and QA checklist will be created to validate extraction accuracy and prompt influence.
+
+## RAG-Lite & Context Retrieval
+- Context is loaded from `context/brand` and `context/market` folders and chunked for retrieval.
+- Current implementation: hybrid retrieval with BM25 lexical scoring plus heuristic semantic similarity, with configurable weighting.
+- Planned upgrades: true embedding retrieval, metadata filters, and freshness/index cache for improved relevance and scaling.
+
+## Output & Compliance
+- Compliance results and retrieval sources/scores/signals are persisted in `run-report.json` for each campaign run.
+- Asset semantic extraction details are not yet fully persisted in `run-report.json` (planned improvement).
+- Compliance checks will be expanded to support market-specific legal rules and human approval workflow.
+
+## Safety & Governance
+- All new semantic and compliance features will be gated by feature flags and kill switches for safe rollout and quick disabling.
+- Guardrails and fallback logic are documented in README and developer docs.
+
+## Demo & Interview Readiness
+- Demo script and checklist updated to reflect new semantic extraction and reporting features.
+- Sample run artifacts include extraction details in outputs and reports.
+
+---
+
+## Completed
+- Dynamic model selection end-to-end
+- Asset metadata UI/API/plumbing
+- Prompt visual context injection
+- Deterministic mock semantic extraction
+- Asset DTO extension and merge logic
+- Static checks and build validation
 
 ## Assumptions and Limitations
 - Input format is JSON only.

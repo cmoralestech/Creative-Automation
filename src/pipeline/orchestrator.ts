@@ -4,7 +4,7 @@ import { performance } from "node:perf_hooks";
 import { GenerationSource, OpenAIClient } from "@/adapters/openaiClient";
 import { ASPECT_RATIO_DIMENSIONS, CampaignBrief } from "@/domain/campaignBrief";
 import { buildRagIndex } from "@/rag/indexer";
-import { retrieveContext } from "@/rag/retriever";
+import { retrieveContextWithOptions } from "@/rag/retriever";
 import {
   buildVisualContextForProduct,
   buildDefaultLogoAsset,
@@ -36,7 +36,30 @@ export type ProductRunDto = {
       reason: string | null;
     };
   };
-  retrievedContext: { source: string; score: number; text: string }[];
+  retrievedContext: {
+    source: string;
+    score: number;
+    text: string;
+    signals?: {
+      mode: "lexical" | "semantic" | "hybrid";
+      lexical: number;
+      semantic: number;
+      phrase: number;
+      density: number;
+      intent: number;
+    };
+  }[];
+  retrievedContextFilters?: {
+    sourceTypes?: Array<"brand" | "market" | "other">;
+    metadata?: {
+      region?: string;
+      country?: string;
+      language?: string;
+      productId?: string;
+      productName?: string;
+      terms?: string[];
+    };
+  };
   legal: {
     copyPassed: boolean;
     flaggedWords: string[];
@@ -116,7 +139,23 @@ export async function runPipeline({
       ]
         .filter(Boolean)
         .join(" ");
-      const ragMatches = retrieveContext(ragIndex, query, 4);
+
+      const retrievalFilters: ProductRunDto["retrievedContextFilters"] = {
+        metadata: {
+          region: brief.market.region,
+          country: brief.market.country,
+          language: brief.market.language,
+          productId: product.id,
+          productName: product.name,
+          terms: product.keyBenefits.slice(0, 3),
+        },
+      };
+
+      const ragMatches = retrieveContextWithOptions(ragIndex, query, {
+        topK: 4,
+        sourceTypes: retrievalFilters.sourceTypes,
+        metadata: retrievalFilters.metadata,
+      });
       const visualContext = buildVisualContextForProduct(product, uploadedAssets);
 
       const copyPrompt = buildCopyPrompt(brief, product, ragMatches, visualContext);
@@ -244,7 +283,9 @@ export async function runPipeline({
           source: match.source,
           score: match.score,
           text: match.text,
+          signals: match.signals,
         })),
+        retrievedContextFilters: retrievalFilters,
         outputs,
       };
     }),
