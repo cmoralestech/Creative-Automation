@@ -2,10 +2,11 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 
 import { OpenAIClient } from "@/adapters/openaiClient";
+import { WebSearchClient } from "@/adapters/webSearchClient";
 import { ASPECT_RATIO_DIMENSIONS, CampaignBrief } from "@/domain/campaignBrief";
 import { PipelineResultDto, ProductRunDto } from "@/pipeline/types";
 import { buildRagIndex, RagIndex } from "@/rag/indexer";
-import { retrieveContext } from "@/rag/retriever";
+import { RagMatch, retrieveContext } from "@/rag/retriever";
 import {
   buildVisualContextForProduct,
   buildDefaultLogoAsset,
@@ -74,6 +75,7 @@ async function buildProductRun({
   ragIndex,
   logoAsset,
   client,
+  webSearchClient,
   textModel,
   workspaceRoot,
 }: {
@@ -83,6 +85,7 @@ async function buildProductRun({
   ragIndex: RagIndex;
   logoAsset: UploadedAssetDto | null;
   client: OpenAIClient;
+  webSearchClient: WebSearchClient;
   textModel: string;
   workspaceRoot: string;
 }): Promise<ProductRunDto> {
@@ -90,9 +93,16 @@ async function buildProductRun({
   const productAsset = findProductAsset(product, uploadedAssets);
   const query = buildRetrievalQuery(brief, product);
   const ragMatches = retrieveContext(ragIndex, query, 4);
+  const webMatches: RagMatch[] = (await webSearchClient.search(query, 2)).map((result) => ({
+    source: `web:${result.domain}`,
+    score: 0.35,
+    text: `${result.title} — ${result.snippet}`,
+    signals: undefined,
+  }));
+  const contextMatches = [...ragMatches, ...webMatches];
   const visualContext = buildVisualContextForProduct(product, uploadedAssets);
 
-  const copyPrompt = buildCopyPrompt(brief, product, ragMatches, visualContext);
+  const copyPrompt = buildCopyPrompt(brief, product, contextMatches, visualContext);
   const copyResult = await client.generateCopy(copyPrompt, textModel);
   const generatedCopy = copyResult.text;
   const copyCompliance = evaluateCopyCompliance(generatedCopy, brief.brand.forbiddenWords);
@@ -104,7 +114,7 @@ async function buildProductRun({
 
   if (!baseImage) {
     const imageResult = await client.generateImage(
-      buildImagePrompt(brief, product, ragMatches, visualContext),
+      buildImagePrompt(brief, product, contextMatches, visualContext),
     );
     baseImage = imageResult.image;
     imageSource = imageResult.source;
@@ -202,7 +212,7 @@ async function buildProductRun({
       publishReady: productBlockedReasons.size === 0,
       blockedReasons: Array.from(productBlockedReasons),
     },
-    retrievedContext: ragMatches.map((match) => ({
+    retrievedContext: contextMatches.map((match) => ({
       source: match.source,
       score: match.score,
       text: match.text,
@@ -275,6 +285,7 @@ export async function runPipeline({
 }): Promise<PipelineResultDto> {
   const startedAt = performance.now();
   const client = new OpenAIClient();
+  const webSearchClient = new WebSearchClient();
 
   // Stage A: build RAG index from workspace context documents.
   const ragIndex = await buildRagIndex([
@@ -296,6 +307,7 @@ export async function runPipeline({
         ragIndex,
         logoAsset,
         client,
+        webSearchClient,
         textModel,
         workspaceRoot,
       }),
@@ -304,6 +316,12 @@ export async function runPipeline({
 
   const durationMs = Math.round(performance.now() - startedAt);
   const totalOutputs = runs.reduce((sum, run) => sum + run.outputs.length, 0);
+  const webSearchEnabled = process.env.ENABLE_WEB_SEARCH === "true";
+  const webSearchResultCount = runs.reduce(
+    (sum, run) =>
+      sum + run.retrievedContext.filter((context) => context.source.startsWith("web:")).length,
+    0,
+  );
   const publishReadyOutputCount = runs.reduce(
     (sum, run) => sum + run.outputs.filter((output) => output.compliance.publishReady).length,
     0,
@@ -342,6 +360,10 @@ export async function runPipeline({
       publishReadyOutputCount,
       durationMs,
     },
+    webSearch: {
+      enabled: webSearchEnabled,
+      resultCount: webSearchResultCount,
+    },
     runSummary,
     productRuns: runs,
   };
@@ -354,6 +376,10 @@ export async function runPipeline({
     reportPath,
     outputRoot: path.join(workspaceRoot, "outputs", brief.campaignId),
     durationMs,
+    webSearch: {
+      enabled: webSearchEnabled,
+      resultCount: webSearchResultCount,
+    },
     runSummary,
     productRuns: runs,
   };

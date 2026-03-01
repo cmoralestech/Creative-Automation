@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 
+import { WebSearchClient } from "@/adapters/webSearchClient";
 import { CampaignBrief, parseCampaignBrief } from "@/domain/campaignBrief";
 import { ApiErrorResponseDto } from "@/app/api/_shared/dtos";
 import {
@@ -182,6 +183,7 @@ async function generateBriefWithModel(
   client: OpenAI,
   userRequest: string,
   model: BriefChatModel,
+  webContext: string,
 ): Promise<BriefChatResponseDto> {
   // Stage helper: structured JSON generation with schema-constrained output.
   const systemPrompt = [
@@ -204,7 +206,12 @@ async function generateBriefWithModel(
       },
       {
         role: "user",
-        content: `Create a campaign brief JSON for this request: ${userRequest}`,
+        content: [
+          `Create a campaign brief JSON for this request: ${userRequest}`,
+          webContext ? `Supplemental web context (untrusted reference):\n${webContext}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
       },
     ],
     text: {
@@ -269,10 +276,15 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const client = new OpenAI({ apiKey });
+    const webSearchClient = new WebSearchClient();
+    const webSnippets = await webSearchClient.search(userRequest, 3);
+    const webContext = webSnippets
+      .map((item, index) => `${index + 1}. ${item.title} (${item.url}) — ${item.snippet}`)
+      .join("\n");
 
     try {
       // Stage 3: Generate live schema-valid brief JSON.
-      const result = await generateBriefWithModel(client, userRequest, selectedModel);
+      const result = await generateBriefWithModel(client, userRequest, selectedModel, webContext);
       return Response.json(result satisfies BriefChatResponseDto);
     } catch (error) {
       // Stage 4: Fallback to deterministic mock brief if live generation fails.

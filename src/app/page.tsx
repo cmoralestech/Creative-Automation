@@ -126,7 +126,8 @@ export default function Home() {
       progressInterval = setInterval(() => {
         setProgressStep((current) => {
           if (!current) return "Validating brief...";
-          if (current === "Validating brief...") return "Retrieving context (RAG-lite)...";
+          if (current === "Validating brief...") return "Checking web search context (if enabled)...";
+          if (current === "Checking web search context (if enabled)...") return "Retrieving context (RAG-lite)...";
           if (current === "Retrieving context (RAG-lite)...") return "Generating copy with AI...";
           if (current === "Generating copy with AI...") return "Generating images with DALL-E 3...";
           if (current === "Generating images with DALL-E 3...") return "Composing creatives...";
@@ -443,6 +444,11 @@ export default function Home() {
                 {result ? (
                   <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-slate-700">
                     Publish-ready: {publishReadyOutputs}/{totalOutputs}
+                  </span>
+                ) : null}
+                {result ? (
+                  <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-slate-700">
+                    Web search: {result.webSearch.enabled ? `${result.webSearch.resultCount} hits` : "off"}
                   </span>
                 ) : null}
               </div>

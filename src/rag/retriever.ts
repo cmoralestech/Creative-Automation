@@ -133,7 +133,6 @@ function matchesMetadata(
     return true;
   }
 
-  const normalizedSource = chunk.source.toLowerCase();
   const sourceType = classifySource(chunk.source);
   if (sourceTypes && sourceTypes.length > 0 && !sourceTypes.includes(sourceType)) {
     return false;

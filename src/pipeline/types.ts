@@ -59,6 +59,10 @@ export type PipelineResultDto = {
   reportPath: string;
   outputRoot: string;
   durationMs: number;
+  webSearch: {
+    enabled: boolean;
+    resultCount: number;
+  };
   runSummary: {
     text: string;
     source: GenerationSource;
