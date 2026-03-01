@@ -16,6 +16,10 @@ Local web app that demonstrates campaign creative automation for social ads:
 - Zod (strict JSON schema validation)
 - Local file storage for outputs and reports
 
+## Documentation
+- `ADAPTERS.md`: adapter layer, shared adapter types, and utility module entrypoints
+- `ARCHITECTURE.md`: frontend, API, pipeline, services, RAG, and end-to-end system map
+
 ## Project Structure
 - `src/app/page.tsx`: Tailwind UI for brief upload, assets, and run summary
 - `src/app/api/generate/route.ts`: API endpoint that runs pipeline

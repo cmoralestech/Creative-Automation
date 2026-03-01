@@ -1,4 +1,4 @@
-import { GenerationSource } from "@/adapters/openaiClient";
+import { GenerationSource } from "@/adapters/adapterTypes";
 
 export type ProductRunDto = {
   productId: string;

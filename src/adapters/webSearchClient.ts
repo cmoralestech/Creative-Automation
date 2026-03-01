@@ -1,11 +1,5 @@
-import OpenAI from "openai";
-
-export type WebSearchSnippet = {
-  title: string;
-  url: string;
-  snippet: string;
-  domain: string;
-};
+import { sharedOpenAIClient } from "./openaiClientFactory";
+import { WebSearchResponsePayload, WebSearchSnippet } from "./adapterTypes";
 
 function toDomain(url: string): string {
   try {
@@ -20,14 +14,13 @@ function sanitize(input: string): string {
 }
 
 export class WebSearchClient {
-  private readonly client: OpenAI | null;
+  private readonly client: typeof sharedOpenAIClient;
   private readonly enabled: boolean;
   private readonly model: string;
 
   constructor() {
-    const apiKey = process.env.OPENAI_API_KEY;
     this.enabled = process.env.ENABLE_WEB_SEARCH === "true";
-    this.client = apiKey ? new OpenAI({ apiKey }) : null;
+    this.client = sharedOpenAIClient;
     this.model = process.env.WEB_SEARCH_MODEL?.trim() || "gpt-4.1-mini";
   }
 
@@ -91,15 +84,14 @@ export class WebSearchClient {
         return [];
       }
 
-      const parsed = JSON.parse(response.output_text) as {
-        results?: Array<{ title?: string; url?: string; snippet?: string }>;
-      };
+      const parsed = JSON.parse(response.output_text) as WebSearchResponsePayload;
 
       return (parsed.results ?? [])
         .map((result) => {
           const title = typeof result.title === "string" ? sanitize(result.title) : "";
           const url = typeof result.url === "string" ? sanitize(result.url) : "";
           const snippet = typeof result.snippet === "string" ? sanitize(result.snippet) : "";
+
           return {
             title,
             url,
