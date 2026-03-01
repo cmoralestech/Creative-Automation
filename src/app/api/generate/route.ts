@@ -2,33 +2,23 @@ import path from "node:path";
 
 import { ImageSemanticClient } from "@/adapters/imageSemanticClient";
 import { ApiErrorResponseDto } from "@/app/api/_shared/dtos";
+import {
+  AssetMetadataDto,
+  GenerateModel,
+  GenerateRequestFormDto,
+  SUPPORTED_GENERATE_MODELS,
+} from "@/app/api/generate/types";
 import { parseCampaignBrief } from "@/domain/campaignBrief";
 import { PipelineResultDto, runPipeline } from "@/pipeline/orchestrator";
 import { UploadedAssetDto } from "@/services/assetService";
 
 export const runtime = "nodejs";
 
+// Request guardrails for brief/assets.
 const MAX_BRIEF_BYTES = 150_000;
 const MAX_ASSET_FILES = 10;
 const MAX_ASSET_BYTES = 12 * 1024 * 1024;
 const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
-const SUPPORTED_GENERATE_MODELS = ["gpt-4.1-mini", "gpt-4.1", "gpt-4o"] as const;
-
-type GenerateModel = (typeof SUPPORTED_GENERATE_MODELS)[number];
-
-type GenerateRequestFormDto = {
-  brief: FormDataEntryValue | null;
-  briefFile: FormDataEntryValue | null;
-  model: FormDataEntryValue | null;
-  assetMetadata: FormDataEntryValue | null;
-  assets: FormDataEntryValue[];
-};
-
-type AssetMetadataDto = {
-  role?: "logo" | "product" | "reference" | "unknown";
-  productId?: string;
-  semanticHint?: string;
-};
 
 function resolveRole(
   manualRole: AssetMetadataDto["role"],
@@ -94,6 +84,7 @@ function parseAssetMetadata(input: FormDataEntryValue | null): AssetMetadataDto[
   }
 }
 
+// Convert one uploaded File into an internal asset DTO with semantic enrichment.
 async function toUploadedAsset(
   file: File,
   metadata: AssetMetadataDto | undefined,
@@ -138,6 +129,7 @@ async function toUploadedAsset(
 
 export async function POST(request: Request): Promise<Response> {
   try {
+    // Stage 1: Parse and normalize multipart form payload.
     const formData = await request.formData();
     const payload: GenerateRequestFormDto = {
       brief: formData.get("brief"),
@@ -191,6 +183,7 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
+    // Stage 2: Validate brief schema and upload constraints.
     const brief = parseCampaignBrief(parsedJson);
     const files = payload.assets;
     const uploadCandidates = files.filter((item): item is File => item instanceof File);
@@ -205,6 +198,7 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
+    // Stage 3: Build uploaded asset DTOs and execute pipeline.
     const uploadedAssets = await Promise.all(
       uploadCandidates.map((file, index) =>
         toUploadedAsset(file, assetMetadata[index], semanticClient),
@@ -219,6 +213,7 @@ export async function POST(request: Request): Promise<Response> {
       textModel: selectedModel,
     });
 
+    // Stage 4: Return pipeline result payload to the client.
     return Response.json(result satisfies PipelineResultDto);
   } catch (error) {
     const message =

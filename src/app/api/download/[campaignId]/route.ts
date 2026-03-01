@@ -7,6 +7,7 @@ import { ApiErrorResponseDto } from "@/app/api/_shared/dtos";
 
 export const runtime = "nodejs";
 
+// Route params contract.
 type DownloadRouteParamsDto = {
   campaignId: string;
 };
@@ -19,6 +20,7 @@ export async function GET(
   _request: Request,
   context: { params: Promise<DownloadRouteParamsDto> },
 ): Promise<Response> {
+  // Stage 1: Resolve and validate campaign identifier.
   const { campaignId } = await context.params;
 
   if (!isSafeCampaignId(campaignId)) {
@@ -30,6 +32,7 @@ export async function GET(
 
   const outputDir = path.join(process.cwd(), "outputs", campaignId);
 
+  // Stage 2: Verify campaign output directory exists.
   try {
     await access(outputDir);
   } catch {
@@ -50,6 +53,7 @@ export async function GET(
   archive.directory(outputDir, campaignId);
   void archive.finalize();
 
+  // Stage 3: Stream ZIP archive back to client.
   const webStream = Readable.toWeb(stream) as ReadableStream<Uint8Array>;
 
   return new Response(webStream, {

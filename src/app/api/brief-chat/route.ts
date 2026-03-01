@@ -2,14 +2,17 @@ import OpenAI from "openai";
 
 import { CampaignBrief, parseCampaignBrief } from "@/domain/campaignBrief";
 import { ApiErrorResponseDto } from "@/app/api/_shared/dtos";
+import {
+  BriefChatModel,
+  BriefChatRequestDto,
+  BriefChatResponseDto,
+  SUPPORTED_BRIEF_CHAT_MODELS,
+} from "@/app/api/brief-chat/types";
 
 export const runtime = "nodejs";
 
+// Input guardrail for workspace brief chat prompt.
 const MAX_REQUEST_CHARS = 1200;
-
-const SUPPORTED_BRIEF_CHAT_MODELS = ["gpt-4.1-mini", "gpt-4.1", "gpt-4o"] as const;
-
-type BriefChatModel = (typeof SUPPORTED_BRIEF_CHAT_MODELS)[number];
 
 const CAMPAIGN_BRIEF_JSON_SCHEMA = {
   name: "campaign_brief",
@@ -92,19 +95,6 @@ const CAMPAIGN_BRIEF_JSON_SCHEMA = {
     },
   },
 } as const;
-
-type BriefChatResponseDto = {
-  brief: CampaignBrief;
-  source: "live" | "mock" | "fallback";
-  model: BriefChatModel;
-  repaired: boolean;
-  reason: string | null;
-};
-
-type BriefChatRequestDto = {
-  request?: unknown;
-  model?: unknown;
-};
 
 function sanitizePrompt(input: string): string {
   return input.replace(/[\u0000-\u001F\u007F]/g, " ").trim();
@@ -193,6 +183,7 @@ async function generateBriefWithModel(
   userRequest: string,
   model: BriefChatModel,
 ): Promise<BriefChatResponseDto> {
+  // Stage helper: structured JSON generation with schema-constrained output.
   const systemPrompt = [
     "You generate only campaign brief JSON for a social creative pipeline.",
     "Return only valid JSON matching the response schema.",
@@ -244,6 +235,7 @@ async function generateBriefWithModel(
 
 export async function POST(request: Request): Promise<Response> {
   try {
+    // Stage 1: Parse payload and validate prompt/model inputs.
     const payload = (await request.json()) as BriefChatRequestDto;
     const userRequest = typeof payload.request === "string" ? sanitizePrompt(payload.request) : "";
     const selectedModel = coerceModel(payload.model);
@@ -265,6 +257,7 @@ export async function POST(request: Request): Promise<Response> {
     const apiKey = process.env.OPENAI_API_KEY;
     const mockMode = process.env.MOCK_MODE === "true" || !apiKey;
 
+    // Stage 2: Serve mock brief when OpenAI is unavailable or mock mode is enabled.
     if (mockMode || !apiKey) {
       return Response.json({
         brief: buildMockBriefFromRequest(userRequest),
@@ -278,9 +271,11 @@ export async function POST(request: Request): Promise<Response> {
     const client = new OpenAI({ apiKey });
 
     try {
+      // Stage 3: Generate live schema-valid brief JSON.
       const result = await generateBriefWithModel(client, userRequest, selectedModel);
       return Response.json(result satisfies BriefChatResponseDto);
     } catch (error) {
+      // Stage 4: Fallback to deterministic mock brief if live generation fails.
       const reason = error instanceof Error ? error.message : "Model generation failed.";
       return Response.json({
         brief: buildMockBriefFromRequest(userRequest),

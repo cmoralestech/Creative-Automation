@@ -1,9 +1,10 @@
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 
-import { GenerationSource, OpenAIClient } from "@/adapters/openaiClient";
+import { OpenAIClient } from "@/adapters/openaiClient";
 import { ASPECT_RATIO_DIMENSIONS, CampaignBrief } from "@/domain/campaignBrief";
-import { buildRagIndex } from "@/rag/indexer";
+import { PipelineResultDto, ProductRunDto } from "@/pipeline/types";
+import { buildRagIndex, RagIndex } from "@/rag/indexer";
 import { retrieveContext } from "@/rag/retriever";
 import {
   buildVisualContextForProduct,
@@ -21,72 +22,245 @@ import { composeCreative } from "@/services/creativeComposer";
 import { writeCreative, writeRunReport } from "@/services/outputWriter";
 import { buildCopyPrompt, buildImagePrompt } from "@/services/promptBuilder";
 
-export type ProductRunDto = {
-  productId: string;
-  productName: string;
-  usedExistingAsset: boolean;
-  generatedCopy: string;
-  generation: {
-    copy: {
-      source: GenerationSource;
-      reason: string | null;
-    };
-    image: {
-      source: GenerationSource | "uploaded";
-      reason: string | null;
-    };
-  };
-  retrievedContext: {
-    source: string;
-    score: number;
-    text: string;
-    signals?: {
-      mode: "lexical" | "semantic" | "hybrid";
-      lexical: number;
-      semantic: number;
-      phrase: number;
-      density: number;
-      intent: number;
-    };
-  }[];
-  legal: {
-    copyPassed: boolean;
-    flaggedWords: string[];
-  };
-  governance: {
-    publishReady: boolean;
-    blockedReasons: string[];
-  };
-  outputs: {
-    aspectRatio: string;
-    width: number;
-    height: number;
-    filePath: string;
-    previewBase64: string;
-    compliance: {
-      logoPassed: boolean;
-      colorPassed: boolean;
-      closestColor: string | null;
-      colorDistance: number | null;
-      publishReady: boolean;
-      blockedReasons: string[];
-    };
-  }[];
-};
+export type { PipelineResultDto, ProductRunDto };
 
-export type PipelineResultDto = {
-  campaignId: string;
-  mode: "mock" | "live";
-  reportPath: string;
-  outputRoot: string;
-  durationMs: number;
-  runSummary: {
-    text: string;
-    source: GenerationSource;
-    reason: string | null;
+type ProductInput = CampaignBrief["products"][number];
+
+// Stage helper: construct retrieval query from campaign + product signals.
+function buildRetrievalQuery(brief: CampaignBrief, product: ProductInput): string {
+  return [
+    brief.market.region,
+    brief.market.country,
+    brief.market.language,
+    brief.targetAudience,
+    product.name,
+    ...product.keyBenefits,
+    brief.campaignMessage,
+    brief.brand.voice ?? "",
+    ...(brief.brand.primaryColors ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+// Stage helper: collect compliance blockers for a single composed output.
+function getOutputBlockedReasons({
+  copyPassed,
+  logoPassed,
+  colorPassed,
+}: {
+  copyPassed: boolean;
+  logoPassed: boolean;
+  colorPassed: boolean;
+}): string[] {
+  const outputBlockedReasons: string[] = [];
+  if (!copyPassed) {
+    outputBlockedReasons.push("copy-compliance-failed");
+  }
+  if (!logoPassed) {
+    outputBlockedReasons.push("logo-missing");
+  }
+  if (!colorPassed) {
+    outputBlockedReasons.push("brand-color-distance");
+  }
+  return outputBlockedReasons;
+}
+
+// Stage helper: run end-to-end generation/composition/compliance for one product.
+async function buildProductRun({
+  product,
+  brief,
+  uploadedAssets,
+  ragIndex,
+  logoAsset,
+  client,
+  textModel,
+  workspaceRoot,
+}: {
+  product: ProductInput;
+  brief: CampaignBrief;
+  uploadedAssets: UploadedAssetDto[];
+  ragIndex: RagIndex;
+  logoAsset: UploadedAssetDto | null;
+  client: OpenAIClient;
+  textModel: string;
+  workspaceRoot: string;
+}): Promise<ProductRunDto> {
+  // 1) Resolve product asset reuse and retrieve relevant context.
+  const productAsset = findProductAsset(product, uploadedAssets);
+  const query = buildRetrievalQuery(brief, product);
+  const ragMatches = retrieveContext(ragIndex, query, 4);
+  const visualContext = buildVisualContextForProduct(product, uploadedAssets);
+
+  const copyPrompt = buildCopyPrompt(brief, product, ragMatches, visualContext);
+  const copyResult = await client.generateCopy(copyPrompt, textModel);
+  const generatedCopy = copyResult.text;
+  const copyCompliance = evaluateCopyCompliance(generatedCopy, brief.brand.forbiddenWords);
+
+  // 2) Reuse uploaded image when available, otherwise generate a base image.
+  let baseImage = productAsset?.buffer;
+  let imageSource: ProductRunDto["generation"]["image"]["source"] = "uploaded";
+  let imageReason: string | null = null;
+
+  if (!baseImage) {
+    const imageResult = await client.generateImage(
+      buildImagePrompt(brief, product, ragMatches, visualContext),
+    );
+    baseImage = imageResult.image;
+    imageSource = imageResult.source;
+    imageReason = imageResult.reason;
+  }
+
+  const outputs: ProductRunDto["outputs"] = [];
+  const productBlockedReasons = new Set<string>();
+
+  if (!copyCompliance.passed) {
+    productBlockedReasons.add("copy-compliance-failed");
+  }
+
+  // 3) Compose all requested aspect ratios and evaluate output compliance.
+  for (const ratio of brief.requiredAspectRatios) {
+    let composed = await composeCreative({
+      baseImage,
+      aspectRatio: ratio,
+      campaignText: generatedCopy || brief.campaignMessage,
+      logoImage: logoAsset?.buffer ?? null,
+      brandTintColor: brief.brand.primaryColors?.[0] ?? null,
+      brandTintOpacity: 0.16,
+    });
+
+    let colorCompliance = await evaluateColorCompliance(composed.image, brief.brand.primaryColors);
+
+    if (!colorCompliance.passed && !productAsset && (brief.brand.primaryColors?.length ?? 0) > 0) {
+      composed = await composeCreative({
+        baseImage,
+        aspectRatio: ratio,
+        campaignText: generatedCopy || brief.campaignMessage,
+        logoImage: logoAsset?.buffer ?? null,
+        brandTintColor: brief.brand.primaryColors?.[0] ?? null,
+        brandTintOpacity: 0.28,
+      });
+      colorCompliance = await evaluateColorCompliance(composed.image, brief.brand.primaryColors);
+    }
+
+    const logoPassed = evaluateLogoCompliance(brief.brand.logoRequired, composed.logoPlaced);
+    const outputBlockedReasons = getOutputBlockedReasons({
+      copyPassed: copyCompliance.passed,
+      logoPassed,
+      colorPassed: colorCompliance.passed,
+    });
+
+    for (const blockedReason of outputBlockedReasons) {
+      productBlockedReasons.add(blockedReason);
+    }
+
+    const writtenPath = await writeCreative({
+      rootDir: workspaceRoot,
+      campaignId: brief.campaignId,
+      productId: product.id,
+      aspectRatio: ratio,
+      image: composed.image,
+    });
+
+    outputs.push({
+      aspectRatio: ratio,
+      width: ASPECT_RATIO_DIMENSIONS[ratio].width,
+      height: ASPECT_RATIO_DIMENSIONS[ratio].height,
+      filePath: writtenPath,
+      previewBase64: composed.image.toString("base64"),
+      compliance: {
+        logoPassed,
+        colorPassed: colorCompliance.passed,
+        closestColor: colorCompliance.closestColor,
+        colorDistance: colorCompliance.minDistance,
+        publishReady: outputBlockedReasons.length === 0,
+        blockedReasons: outputBlockedReasons,
+      },
+    });
+  }
+
+  return {
+    productId: product.id,
+    productName: product.name,
+    usedExistingAsset: Boolean(productAsset),
+    generatedCopy,
+    generation: {
+      copy: {
+        source: copyResult.source,
+        reason: copyResult.reason,
+      },
+      image: {
+        source: imageSource,
+        reason: imageReason,
+      },
+    },
+    legal: {
+      copyPassed: copyCompliance.passed,
+      flaggedWords: copyCompliance.flaggedWords,
+    },
+    governance: {
+      publishReady: productBlockedReasons.size === 0,
+      blockedReasons: Array.from(productBlockedReasons),
+    },
+    retrievedContext: ragMatches.map((match) => ({
+      source: match.source,
+      score: match.score,
+      text: match.text,
+      signals: match.signals,
+    })),
+    outputs,
   };
-  productRuns: ProductRunDto[];
-};
+}
+
+// Stage helper: deterministic fallback summary when LLM summarization is unavailable.
+function buildFallbackSummary({
+  totalOutputs,
+  runs,
+  brief,
+  publishReadyOutputCount,
+  productReviewRequiredCount,
+}: {
+  totalOutputs: number;
+  runs: ProductRunDto[];
+  brief: CampaignBrief;
+  publishReadyOutputCount: number;
+  productReviewRequiredCount: number;
+}): string {
+  return publishReadyOutputCount === totalOutputs
+    ? `Generated ${totalOutputs} outputs across ${runs.length} products for ${brief.campaignId}; all outputs are publish-ready.`
+    : `Generated ${totalOutputs} outputs across ${runs.length} products for ${brief.campaignId}; ${publishReadyOutputCount} are publish-ready and ${productReviewRequiredCount} product runs need review.`;
+}
+
+// Stage helper: prompt for LLM run summary generation.
+function buildRunSummaryPrompt({
+  brief,
+  runs,
+  totalOutputs,
+  publishReadyOutputCount,
+  productReviewRequiredCount,
+  durationMs,
+}: {
+  brief: CampaignBrief;
+  runs: ProductRunDto[];
+  totalOutputs: number;
+  publishReadyOutputCount: number;
+  productReviewRequiredCount: number;
+  durationMs: number;
+}): string {
+  return [
+    "Summarize this campaign generation run for a human reviewer.",
+    `Campaign ID: ${brief.campaignId}`,
+    `Market: ${brief.market.region}${brief.market.country ? `/${brief.market.country}` : ""}`,
+    `Target audience: ${brief.targetAudience}`,
+    `Products: ${runs.map((run) => run.productName).join(", ")}`,
+    `Outputs total: ${totalOutputs}`,
+    `Publish-ready outputs: ${publishReadyOutputCount}/${totalOutputs}`,
+    `Product runs needing review: ${productReviewRequiredCount}`,
+    `Duration ms: ${durationMs}`,
+    `Blocked reasons: ${Array.from(new Set(runs.flatMap((run) => run.governance.blockedReasons))).join(", ") || "none"}`,
+    "Write 2-3 sentences. Mention one positive outcome and one next action if review is needed.",
+  ].join("\n");
+}
 
 export async function runPipeline({
   brief,
@@ -102,6 +276,7 @@ export async function runPipeline({
   const startedAt = performance.now();
   const client = new OpenAIClient();
 
+  // Stage A: build RAG index from workspace context documents.
   const ragIndex = await buildRagIndex([
     path.join(workspaceRoot, "context", "brand"),
     path.join(workspaceRoot, "context", "market"),
@@ -111,156 +286,20 @@ export async function runPipeline({
     findLogoAsset(uploadedAssets) ??
     (brief.brand.logoRequired ? buildDefaultLogoAsset(brief.brand.primaryColors?.[0]) : null);
 
-  // Process all products in parallel for 2-3x speed improvement
+  // Stage B: process products in parallel.
   const runs = await Promise.all(
-    brief.products.map(async (product) => {
-      const productAsset = findProductAsset(product, uploadedAssets);
-      const query = [
-        brief.market.region,
-        brief.market.country,
-        brief.market.language,
-        brief.targetAudience,
-        product.name,
-        ...product.keyBenefits,
-        brief.campaignMessage,
-        brief.brand.voice ?? "",
-        ...(brief.brand.primaryColors ?? []),
-      ]
-        .filter(Boolean)
-        .join(" ");
-      const ragMatches = retrieveContext(ragIndex, query, 4);
-      const visualContext = buildVisualContextForProduct(product, uploadedAssets);
-
-      const copyPrompt = buildCopyPrompt(brief, product, ragMatches, visualContext);
-      const copyResult = await client.generateCopy(copyPrompt, textModel);
-      const generatedCopy = copyResult.text;
-      const copyCompliance = evaluateCopyCompliance(generatedCopy, brief.brand.forbiddenWords);
-
-      let baseImage = productAsset?.buffer;
-      let imageSource: ProductRunDto["generation"]["image"]["source"] = "uploaded";
-      let imageReason: string | null = null;
-
-      if (!baseImage) {
-        const imageResult = await client.generateImage(
-          buildImagePrompt(brief, product, ragMatches, visualContext),
-        );
-        baseImage = imageResult.image;
-        imageSource = imageResult.source;
-        imageReason = imageResult.reason;
-      }
-
-      const outputs: ProductRunDto["outputs"] = [];
-      const productBlockedReasons = new Set<string>();
-
-      if (!copyCompliance.passed) {
-        productBlockedReasons.add("copy-compliance-failed");
-      }
-
-      for (const ratio of brief.requiredAspectRatios) {
-        let composed = await composeCreative({
-          baseImage,
-          aspectRatio: ratio,
-          campaignText: generatedCopy || brief.campaignMessage,
-          logoImage: logoAsset?.buffer ?? null,
-          brandTintColor: brief.brand.primaryColors?.[0] ?? null,
-          brandTintOpacity: 0.16,
-        });
-
-        let colorCompliance = await evaluateColorCompliance(
-          composed.image,
-          brief.brand.primaryColors,
-        );
-
-        if (
-          !colorCompliance.passed &&
-          !productAsset &&
-          (brief.brand.primaryColors?.length ?? 0) > 0
-        ) {
-          composed = await composeCreative({
-            baseImage,
-            aspectRatio: ratio,
-            campaignText: generatedCopy || brief.campaignMessage,
-            logoImage: logoAsset?.buffer ?? null,
-            brandTintColor: brief.brand.primaryColors?.[0] ?? null,
-            brandTintOpacity: 0.28,
-          });
-          colorCompliance = await evaluateColorCompliance(composed.image, brief.brand.primaryColors);
-        }
-
-        const logoPassed = evaluateLogoCompliance(brief.brand.logoRequired, composed.logoPlaced);
-
-        const outputBlockedReasons: string[] = [];
-        if (!copyCompliance.passed) {
-          outputBlockedReasons.push("copy-compliance-failed");
-        }
-        if (!logoPassed) {
-          outputBlockedReasons.push("logo-missing");
-        }
-        if (!colorCompliance.passed) {
-          outputBlockedReasons.push("brand-color-distance");
-        }
-
-        for (const blockedReason of outputBlockedReasons) {
-          productBlockedReasons.add(blockedReason);
-        }
-
-        const writtenPath = await writeCreative({
-          rootDir: workspaceRoot,
-          campaignId: brief.campaignId,
-          productId: product.id,
-          aspectRatio: ratio,
-          image: composed.image,
-        });
-
-        outputs.push({
-          aspectRatio: ratio,
-          width: ASPECT_RATIO_DIMENSIONS[ratio].width,
-          height: ASPECT_RATIO_DIMENSIONS[ratio].height,
-          filePath: writtenPath,
-          previewBase64: composed.image.toString("base64"),
-          compliance: {
-            logoPassed,
-            colorPassed: colorCompliance.passed,
-            closestColor: colorCompliance.closestColor,
-            colorDistance: colorCompliance.minDistance,
-            publishReady: outputBlockedReasons.length === 0,
-            blockedReasons: outputBlockedReasons,
-          },
-        });
-      }
-
-      return {
-        productId: product.id,
-        productName: product.name,
-        usedExistingAsset: Boolean(productAsset),
-        generatedCopy,
-        generation: {
-          copy: {
-            source: copyResult.source,
-            reason: copyResult.reason,
-          },
-          image: {
-            source: imageSource,
-            reason: imageReason,
-          },
-        },
-        legal: {
-          copyPassed: copyCompliance.passed,
-          flaggedWords: copyCompliance.flaggedWords,
-        },
-        governance: {
-          publishReady: productBlockedReasons.size === 0,
-          blockedReasons: Array.from(productBlockedReasons),
-        },
-        retrievedContext: ragMatches.map((match) => ({
-          source: match.source,
-          score: match.score,
-          text: match.text,
-          signals: match.signals,
-        })),
-        outputs,
-      };
-    }),
+    brief.products.map((product) =>
+      buildProductRun({
+        product,
+        brief,
+        uploadedAssets,
+        ragIndex,
+        logoAsset,
+        client,
+        textModel,
+        workspaceRoot,
+      }),
+    ),
   );
 
   const durationMs = Math.round(performance.now() - startedAt);
@@ -271,27 +310,27 @@ export async function runPipeline({
   );
   const productReviewRequiredCount = runs.filter((run) => !run.governance.publishReady).length;
 
-  const fallbackSummary =
-    publishReadyOutputCount === totalOutputs
-      ? `Generated ${totalOutputs} outputs across ${runs.length} products for ${brief.campaignId}; all outputs are publish-ready.`
-      : `Generated ${totalOutputs} outputs across ${runs.length} products for ${brief.campaignId}; ${publishReadyOutputCount} are publish-ready and ${productReviewRequiredCount} product runs need review.`;
+  // Stage C: generate human-readable run summary.
+  const fallbackSummary = buildFallbackSummary({
+    totalOutputs,
+    runs,
+    brief,
+    publishReadyOutputCount,
+    productReviewRequiredCount,
+  });
 
-  const runSummaryPrompt = [
-    "Summarize this campaign generation run for a human reviewer.",
-    `Campaign ID: ${brief.campaignId}`,
-    `Market: ${brief.market.region}${brief.market.country ? `/${brief.market.country}` : ""}`,
-    `Target audience: ${brief.targetAudience}`,
-    `Products: ${runs.map((run) => run.productName).join(", ")}`,
-    `Outputs total: ${totalOutputs}`,
-    `Publish-ready outputs: ${publishReadyOutputCount}/${totalOutputs}`,
-    `Product runs needing review: ${productReviewRequiredCount}`,
-    `Duration ms: ${durationMs}`,
-    `Blocked reasons: ${Array.from(new Set(runs.flatMap((run) => run.governance.blockedReasons))).join(", ") || "none"}`,
-    "Write 2-3 sentences. Mention one positive outcome and one next action if review is needed.",
-  ].join("\n");
+  const runSummaryPrompt = buildRunSummaryPrompt({
+    brief,
+    runs,
+    totalOutputs,
+    publishReadyOutputCount,
+    productReviewRequiredCount,
+    durationMs,
+  });
 
   const runSummary = await client.generateRunSummary(runSummaryPrompt, fallbackSummary, textModel);
 
+  // Stage D: persist report and return API response DTO.
   const report = {
     campaignId: brief.campaignId,
     mode: client.isMockMode() ? "mock" : "live",
