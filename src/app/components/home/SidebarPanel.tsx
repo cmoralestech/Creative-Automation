@@ -1,6 +1,11 @@
 import type { ChangeEvent } from "react";
 
-import type { InputMode, SimpleBriefForm, SimpleProductForm } from "@/app/page.types";
+import type {
+  ContextLibraryViewModel,
+  InputMode,
+  SimpleBriefForm,
+  SimpleProductForm,
+} from "@/app/page.types";
 
 type SidebarPanelProps = {
   inputMode: InputMode;
@@ -23,6 +28,7 @@ type SidebarPanelProps = {
   files: File[];
   fileNames: string;
   onAssetsSelected: (incomingFiles: File[]) => void;
+  contextLibrary: ContextLibraryViewModel;
   error: string | null;
   submitting: boolean;
   progressStep: string | null;
@@ -43,6 +49,7 @@ export function SidebarPanel({
   files,
   fileNames,
   onAssetsSelected,
+  contextLibrary,
   error,
   submitting,
   progressStep,
@@ -52,6 +59,11 @@ export function SidebarPanel({
     onAssetsSelected(Array.from(event.target.files ?? []));
     event.target.value = "";
   }
+
+  const groupedContextFiles = {
+    brand: contextLibrary.files.filter((file) => file.group === "brand"),
+    market: contextLibrary.files.filter((file) => file.group === "market"),
+  };
 
   return (
     <aside className="hidden h-full w-[320px] shrink-0 border-r border-slate-200 bg-white lg:flex lg:flex-col">
@@ -266,6 +278,70 @@ export function SidebarPanel({
             </div>
           </>
         )}
+
+        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-600">Context library</p>
+            <button
+              type="button"
+              onClick={contextLibrary.togglePanel}
+              className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+            >
+              {contextLibrary.panelOpen ? "Hide" : "Open"}
+            </button>
+          </div>
+          <p className="text-xs text-slate-500">Using {contextLibrary.files.length} context files</p>
+          {contextLibrary.panelOpen ? (
+            <div className="mt-3 space-y-3">
+              {(["brand", "market"] as const).map((group) => (
+                <div key={group}>
+                  <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-slate-500">{group}</p>
+                  <div className="space-y-1">
+                    {groupedContextFiles[group].length === 0 ? (
+                      <p className="text-[11px] text-slate-400">No files</p>
+                    ) : (
+                      groupedContextFiles[group].map((file) => (
+                        <button
+                          key={file.path}
+                          type="button"
+                          onClick={() => contextLibrary.selectPath(file.path)}
+                          className={`block w-full cursor-pointer truncate rounded border px-2 py-1 text-left text-xs ${
+                            contextLibrary.selectedPath === file.path
+                              ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                          }`}
+                          title={file.path}
+                        >
+                          {file.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ))}
+              <textarea
+                className="h-36 w-full rounded-lg border border-slate-300 bg-white p-2 font-mono text-xs text-slate-900"
+                value={contextLibrary.content}
+                onChange={(event) => contextLibrary.updateContent(event.target.value)}
+                placeholder="Select a context file to preview or edit"
+                disabled={!contextLibrary.selectedPath || contextLibrary.loading}
+              />
+              {contextLibrary.error ? <p className="text-xs text-red-600">{contextLibrary.error}</p> : null}
+              {contextLibrary.status ? <p className="text-xs text-emerald-700">{contextLibrary.status}</p> : null}
+              {contextLibrary.lastSavedAt ? (
+                <p className="text-xs text-slate-500">Last saved: {contextLibrary.lastSavedAt}</p>
+              ) : null}
+              <button
+                type="button"
+                onClick={contextLibrary.save}
+                disabled={!contextLibrary.selectedPath || !contextLibrary.dirty || contextLibrary.saving || contextLibrary.loading}
+                className="inline-flex w-full cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {contextLibrary.saving ? "Saving..." : "Save context file"}
+              </button>
+            </div>
+          ) : null}
+        </div>
 
         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
           <label className="text-xs font-medium uppercase tracking-wide text-slate-600">

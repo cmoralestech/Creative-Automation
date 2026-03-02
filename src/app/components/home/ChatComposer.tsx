@@ -7,57 +7,17 @@ import {
   MAX_CHAT_ASSETS,
 } from "@/app/page.constants";
 import { getFileFingerprint } from "@/app/page.helpers";
-import type { AssetMetadata, AssetRole } from "@/app/page.types";
-import type { BriefChatModel } from "@/app/api/brief-chat/types";
-
-type ProductIdOption = {
-  id: string;
-  name: string;
-};
+import type { AssetRole, ChatComposerViewModel } from "@/app/page.types";
 
 type ChatComposerProps = {
-  briefChatModel: BriefChatModel;
-  onBriefChatModelChange: (model: BriefChatModel) => void;
-  briefChatLoading: boolean;
-  briefChatInput: string;
-  onBriefChatInputChange: (value: string) => void;
-  onBriefChatSubmit: () => void;
-  onAssetsSelected: (incomingFiles: File[]) => void;
-  pendingGeneratedBrief: string | null;
-  submitting: boolean;
-  onGenerateFromLatestDraft: () => void;
-  files: File[];
-  assetPreviewUrls: { key: string; name: string; url: string }[];
-  assetMetadataByKey: Record<string, AssetMetadata>;
-  productIdOptions: ProductIdOption[];
-  onRemoveAsset: (index: number) => void;
-  onClearAssets: () => void;
-  onUpdateAssetMetadata: (index: number, next: Partial<AssetMetadata>) => void;
-  assetNotice: string | null;
+  composer: ChatComposerViewModel;
 };
 
 export function ChatComposer({
-  briefChatModel,
-  onBriefChatModelChange,
-  briefChatLoading,
-  briefChatInput,
-  onBriefChatInputChange,
-  onBriefChatSubmit,
-  onAssetsSelected,
-  pendingGeneratedBrief,
-  submitting,
-  onGenerateFromLatestDraft,
-  files,
-  assetPreviewUrls,
-  assetMetadataByKey,
-  productIdOptions,
-  onRemoveAsset,
-  onClearAssets,
-  onUpdateAssetMetadata,
-  assetNotice,
+  composer,
 }: ChatComposerProps) {
   function handleAssetUpload(event: ChangeEvent<HTMLInputElement>) {
-    onAssetsSelected(Array.from(event.target.files ?? []));
+    composer.appendAssets(Array.from(event.target.files ?? []));
     event.target.value = "";
   }
 
@@ -69,10 +29,10 @@ export function ChatComposer({
             Model
           </label>
           <select
-            value={briefChatModel}
-            onChange={(event) => onBriefChatModelChange(event.target.value as BriefChatModel)}
+            value={composer.briefChatModel}
+            onChange={(event) => composer.setBriefChatModel(event.target.value as typeof composer.briefChatModel)}
             className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700 outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300"
-            disabled={briefChatLoading}
+            disabled={composer.briefChatLoading}
           >
             {briefChatModelOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -85,12 +45,12 @@ export function ChatComposer({
           <textarea
             className="max-h-32 min-h-[52px] w-full resize-none bg-transparent px-4 py-3.5 text-sm text-slate-800 outline-none placeholder:text-slate-500"
             placeholder="Describe the campaign brief you want (products, market, audience, message)..."
-            value={briefChatInput}
-            onChange={(event) => onBriefChatInputChange(event.target.value)}
+            value={composer.briefChatInput}
+            onChange={(event) => composer.setBriefChatInput(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
-                onBriefChatSubmit();
+                composer.submitBriefChat();
               }
             }}
             rows={1}
@@ -115,11 +75,11 @@ export function ChatComposer({
             </label>
             <button
               type="button"
-              onClick={onBriefChatSubmit}
-              disabled={briefChatLoading || !briefChatInput.trim()}
+              onClick={composer.submitBriefChat}
+              disabled={composer.briefChatLoading || !composer.briefChatInput.trim()}
               className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm transition hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 active:scale-[0.95] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
             >
-              {briefChatLoading ? (
+              {composer.briefChatLoading ? (
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
               ) : (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -130,46 +90,46 @@ export function ChatComposer({
             </button>
           </div>
         </div>
-        {pendingGeneratedBrief ? (
+        {composer.pendingGeneratedBrief ? (
           <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2">
             <p className="text-[11px] text-indigo-700">
               Draft JSON ready. Review it in JSON mode, then generate when ready.
             </p>
             <button
               type="button"
-              onClick={onGenerateFromLatestDraft}
-              disabled={submitting || briefChatLoading}
+              onClick={composer.generateFromLatestDraft}
+              disabled={composer.submitting || composer.briefChatLoading}
               className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? "Generating..." : "Generate from latest draft"}
+              {composer.submitting ? "Generating..." : "Generate from latest draft"}
             </button>
           </div>
         ) : null}
-        {files.length > 0 ? (
+        {composer.files.length > 0 ? (
           <div className="mt-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                Attached assets ({files.length}/{MAX_CHAT_ASSETS})
+                Attached assets ({composer.files.length}/{MAX_CHAT_ASSETS})
               </p>
               <button
                 type="button"
-                onClick={onClearAssets}
+                onClick={composer.clearAssets}
                 className="cursor-pointer text-[11px] font-medium text-slate-500 transition hover:text-slate-700"
               >
                 Clear all
               </button>
             </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {files.map((file, index) => (
+              {composer.files.map((file, index) => (
                 <div
                   key={`${file.name}-${file.size}-${index}`}
                   className="rounded-lg border border-slate-200 bg-slate-50 p-2"
                 >
                   <div className="flex items-center gap-2">
                     <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white">
-                      {assetPreviewUrls[index]?.url ? (
+                      {composer.assetPreviewUrls[index]?.url ? (
                         <Image
-                          src={assetPreviewUrls[index].url}
+                          src={composer.assetPreviewUrls[index].url}
                           alt={file.name}
                           width={48}
                           height={48}
@@ -184,7 +144,7 @@ export function ChatComposer({
                     </div>
                     <button
                       type="button"
-                      onClick={() => onRemoveAsset(index)}
+                      onClick={() => composer.removeAsset(index)}
                       className="cursor-pointer rounded-full px-1.5 py-0.5 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700"
                       aria-label={`Remove ${file.name}`}
                     >
@@ -197,13 +157,13 @@ export function ChatComposer({
                       <label className="text-[11px] text-slate-500">
                         Role
                         <select
-                          value={(assetMetadataByKey[getFileFingerprint(file)] ?? DEFAULT_ASSET_METADATA).role}
+                          value={(composer.assetMetadataByKey[getFileFingerprint(file)] ?? DEFAULT_ASSET_METADATA).role}
                           onChange={(event) =>
-                            onUpdateAssetMetadata(index, {
+                            composer.updateAssetMetadata(index, {
                               role: event.target.value as AssetRole,
                               productId:
                                 event.target.value === "product"
-                                  ? (assetMetadataByKey[getFileFingerprint(file)]?.productId ?? "")
+                                  ? (composer.assetMetadataByKey[getFileFingerprint(file)]?.productId ?? "")
                                   : "",
                             })
                           }
@@ -218,20 +178,20 @@ export function ChatComposer({
                       <label className="text-[11px] text-slate-500">
                         Product link
                         <select
-                          value={(assetMetadataByKey[getFileFingerprint(file)] ?? DEFAULT_ASSET_METADATA).productId}
+                          value={(composer.assetMetadataByKey[getFileFingerprint(file)] ?? DEFAULT_ASSET_METADATA).productId}
                           onChange={(event) =>
-                            onUpdateAssetMetadata(index, {
+                            composer.updateAssetMetadata(index, {
                               productId: event.target.value,
                             })
                           }
                           disabled={
-                            (assetMetadataByKey[getFileFingerprint(file)] ?? DEFAULT_ASSET_METADATA).role !==
+                            (composer.assetMetadataByKey[getFileFingerprint(file)] ?? DEFAULT_ASSET_METADATA).role !==
                             "product"
                           }
                           className="mt-1 h-8 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700 disabled:opacity-50"
                         >
                           <option value="">Select product</option>
-                          {productIdOptions.map((product) => (
+                          {composer.productIdOptions.map((product) => (
                             <option key={product.id} value={product.id}>
                               {product.name ? `${product.name} (${product.id})` : product.id}
                             </option>
@@ -243,11 +203,11 @@ export function ChatComposer({
                       Semantic hint
                       <input
                         value={
-                          (assetMetadataByKey[getFileFingerprint(file)] ?? DEFAULT_ASSET_METADATA)
+                          (composer.assetMetadataByKey[getFileFingerprint(file)] ?? DEFAULT_ASSET_METADATA)
                             .semanticHint
                         }
                         onChange={(event) =>
-                          onUpdateAssetMetadata(index, {
+                          composer.updateAssetMetadata(index, {
                             semanticHint: event.target.value,
                           })
                         }
@@ -261,8 +221,8 @@ export function ChatComposer({
             </div>
           </div>
         ) : null}
-        {assetNotice ? (
-          <p className="mt-2 text-center text-[11px] text-amber-700">{assetNotice}</p>
+        {composer.assetNotice ? (
+          <p className="mt-2 text-center text-[11px] text-amber-700">{composer.assetNotice}</p>
         ) : null}
         <p className="mt-2 text-center text-[11px] text-slate-500">
           Brief mode: draft JSON with chat, then click Generate from latest draft to run creatives.
