@@ -19,10 +19,16 @@ Local web app that demonstrates campaign creative automation for social ads:
 ## Documentation
 - `ADAPTERS.md`: adapter layer, shared adapter types, and utility module entrypoints
 - `ARCHITECTURE.md`: frontend, API, pipeline, services, RAG, and end-to-end system map
+- `IMPROVEMENTS.md`: completed upgrades and prioritized roadmap
 
 ## Project Structure
-- `src/app/page.tsx`: Tailwind UI for brief upload, assets, and run summary
+- `src/app/page.tsx`: Home composition/wiring for editor, chat, generation, context, and timeline
+- `src/app/hooks/*`: UI domain hooks (`useBriefEditor`, `useBriefChat`, `useGenerationRun`, `useAssetComposer`, `useContextLibrary`)
+- `src/app/components/home/*`: Home UI (`SidebarPanel`, `ChatComposer`, `ChatTimeline`, `RunCard`, `RunSummaryCard`)
 - `src/app/api/generate/route.ts`: API endpoint that runs pipeline
+- `src/app/api/brief-chat/route.ts`: Brief drafting endpoint
+- `src/app/api/context/route.ts`: Context library list/read/save endpoint for in-app editing
+- `src/app/api/download/[campaignId]/route.ts`: ZIP export endpoint
 - `src/pipeline/orchestrator.ts`: End-to-end flow coordination
 - `src/rag/*`: RAG-lite index + retrieval from local context files
 - `src/services/*`: prompting, composition, compliance, output writing
@@ -90,6 +96,7 @@ This keeps TLS verification enabled while letting Node trust your machine's keyc
    - **JSON/Simple flow:** click **Generate** in the left panel.
    - **Brief chat flow (recommended):** send prompt → review drafted JSON in JSON mode → click **Generate from latest draft**.
 4. Review run summary in UI.
+5. (Optional) Open **Context Library** in the left panel to view/edit `context/brand/*` and `context/market/*`, then save and rerun generation.
 
 ## Output
 Generated files are saved under:
@@ -111,7 +118,7 @@ From the UI run summary, you can click **Download all outputs (.zip)** to export
 - **Production expectations:** signed URLs, tenant isolation, retention policies, and audit logging for generated/transient assets.
 
 ## RAG-Lite Behavior
-- Context is loaded from `context/brand` and `context/market`.
+- Context is loaded from `context/brand/*` and `context/market/*`.
 - Files are chunked and ranked with hybrid retrieval: BM25 lexical scoring + semantic similarity.
 - Top snippets are injected into copy and image prompts.
 - Retrieval sources, scores, and scoring signals are included in the run report.
@@ -119,6 +126,7 @@ From the UI run summary, you can click **Download all outputs (.zip)** to export
 - Hybrid score weights are configurable with `RAG_HYBRID_LEXICAL_WEIGHT` and `RAG_HYBRID_SEMANTIC_WEIGHT`.
 - Metadata-aware filtering is supported (region/country/language/product context), with automatic fallback to full corpus when filters are too strict.
 - Metadata filter strictness is tunable via `RAG_METADATA_FILTER_MIN_MATCHES`.
+- Context can be updated in-app through `/api/context` (list/read/save), with path and file-type guardrails.
 
 ## Safety and Governance Guardrails
 - **Upload guardrails:** API enforces brief size limit, asset count limit, per-file size limit, and allowed image formats.

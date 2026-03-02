@@ -9,10 +9,18 @@ This guide complements `ADAPTERS.md` by documenting the frontend and the rest of
   - `src/app/page.constants.ts`
   - `src/app/page.helpers.ts`
   - `src/app/page.types.ts`
+- Home domain hooks:
+  - `src/app/hooks/useBriefEditor.ts`
+  - `src/app/hooks/useAssetComposer.ts`
+  - `src/app/hooks/useBriefChat.ts`
+  - `src/app/hooks/useGenerationRun.ts`
+  - `src/app/hooks/useContextLibrary.ts`
 - Home UI components:
   - `src/app/components/home/SidebarPanel.tsx`
   - `src/app/components/home/ChatTimeline.tsx`
   - `src/app/components/home/ChatComposer.tsx`
+  - `src/app/components/home/RunCard.tsx`
+  - `src/app/components/home/RunSummaryCard.tsx`
 - App shell:
   - `src/app/layout.tsx`
   - `src/app/globals.css`
@@ -23,6 +31,8 @@ This guide complements `ADAPTERS.md` by documenting the frontend and the rest of
   - Main campaign generation endpoint.
 - `src/app/api/brief-chat/route.ts`
   - Brief drafting / chat endpoint.
+- `src/app/api/context/route.ts`
+  - Context library list/read/save endpoint with path and file safety checks.
 - `src/app/api/download/[campaignId]/route.ts`
   - Campaign output ZIP/download endpoint.
 - `src/app/api/_shared/*`

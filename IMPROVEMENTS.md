@@ -18,6 +18,8 @@
 - Chat-first workflow with model selector and schema-constrained brief JSON generation.
 - Two-step confirmation flow for brief-chat: draft JSON first, then explicit generate action.
 - Download-all ZIP export is available from run summary.
+- In-app Context Library supports listing, editing, and saving local context markdown files.
+- Frontend home flow is modularized into domain hooks and smaller run summary/result components.
 - Improved TLS/certificate troubleshooting guidance for macOS local development.
 
 ## Open Improvements (Prioritized)
@@ -46,7 +48,8 @@
 
 ## RAG & Context Retrieval
 - Hybrid retrieval is now implemented with BM25 lexical scoring + heuristic semantic similarity.
-- Add true embedding retrieval and metadata filters for improved context relevance.
+- Metadata-aware filtering with tunable minimum matches is implemented.
+- Add true embedding retrieval for improved context relevance.
 - Add freshness/index cache for context files to support rapid iteration and production scaling.
 
 ## Output & Compliance
