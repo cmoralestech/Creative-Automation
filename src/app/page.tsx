@@ -81,7 +81,6 @@ export default function Home() {
           simpleForm={briefEditor.simpleForm}
           onSimpleFieldChange={briefEditor.updateSimpleField}
           onSimpleProductChange={briefEditor.updateSimpleProduct}
-          simplePreviewJson={briefEditor.simplePreviewJson}
           briefText={briefEditor.briefText}
           onBriefTextChange={briefEditor.setBriefText}
           briefFileName={briefEditor.briefFileName}

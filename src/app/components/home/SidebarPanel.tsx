@@ -1,4 +1,4 @@
-import type { ChangeEvent } from "react";
+import { useRef, type ChangeEvent } from "react";
 
 import type {
   ContextLibraryViewModel,
@@ -20,7 +20,6 @@ type SidebarPanelProps = {
     key: keyof SimpleProductForm,
     value: string,
   ) => void;
-  simplePreviewJson: string;
   briefText: string;
   onBriefTextChange: (value: string) => void;
   briefFileName: string | null;
@@ -41,7 +40,6 @@ export function SidebarPanel({
   simpleForm,
   onSimpleFieldChange,
   onSimpleProductChange,
-  simplePreviewJson,
   briefText,
   onBriefTextChange,
   briefFileName,
@@ -55,9 +53,15 @@ export function SidebarPanel({
   progressStep,
   onGenerate,
 }: SidebarPanelProps) {
+  const assetUploadRef = useRef<HTMLInputElement | null>(null);
+
   function handleAssetUpload(event: ChangeEvent<HTMLInputElement>) {
     onAssetsSelected(Array.from(event.target.files ?? []));
     event.target.value = "";
+  }
+
+  function openAssetPicker() {
+    assetUploadRef.current?.click();
   }
 
   const groupedContextFiles = {
@@ -232,14 +236,6 @@ export function SidebarPanel({
               </div>
             ))}
 
-            <details className="rounded-lg border border-slate-200 bg-white p-2">
-              <summary className="cursor-pointer text-xs font-medium text-slate-600">
-                JSON preview (auto-generated)
-              </summary>
-              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-2 text-[11px] text-slate-700">
-                {simplePreviewJson}
-              </pre>
-            </details>
           </div>
         ) : (
           <>
@@ -349,18 +345,20 @@ export function SidebarPanel({
           </label>
           <input
             id="assets-upload"
-            className="sr-only"
+            ref={assetUploadRef}
+            className="hidden"
             type="file"
             multiple
             accept="image/*"
             onChange={handleAssetUpload}
           />
-          <label
-            htmlFor="assets-upload"
+          <button
+            type="button"
+            onClick={openAssetPicker}
             className="mt-2 inline-flex w-full cursor-pointer items-center justify-center rounded-lg border border-indigo-400 bg-white px-3 py-2 text-sm font-medium text-indigo-700 transition hover:bg-indigo-50"
           >
             Choose image assets
-          </label>
+          </button>
           <p className="mt-2 text-xs text-slate-500">
             {files.length > 0 ? `${files.length} files: ${fileNames}` : "No files selected"}
           </p>

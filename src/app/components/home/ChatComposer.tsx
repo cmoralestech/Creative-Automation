@@ -1,4 +1,4 @@
-import type { ChangeEvent } from "react";
+import { useRef, type ChangeEvent } from "react";
 import Image from "next/image";
 
 import {
@@ -16,9 +16,15 @@ type ChatComposerProps = {
 export function ChatComposer({
   composer,
 }: ChatComposerProps) {
+  const inlineAssetUploadRef = useRef<HTMLInputElement | null>(null);
+
   function handleAssetUpload(event: ChangeEvent<HTMLInputElement>) {
     composer.appendAssets(Array.from(event.target.files ?? []));
     event.target.value = "";
+  }
+
+  function openInlineAssetPicker() {
+    inlineAssetUploadRef.current?.click();
   }
 
   return (
@@ -57,22 +63,24 @@ export function ChatComposer({
           />
           <input
             id="assets-upload-chat-inline"
-            className="sr-only"
+            ref={inlineAssetUploadRef}
+            className="hidden"
             type="file"
             multiple
             accept="image/*"
             onChange={handleAssetUpload}
           />
           <div className="flex items-center gap-2 p-2">
-            <label
-              htmlFor="assets-upload-chat-inline"
+            <button
+              type="button"
+              onClick={openInlineAssetPicker}
               title="Add photos or logo"
               className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-100"
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M21.44 11.05l-8.49 8.49a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.48-8.48" />
               </svg>
-            </label>
+            </button>
             <button
               type="button"
               onClick={composer.submitBriefChat}
